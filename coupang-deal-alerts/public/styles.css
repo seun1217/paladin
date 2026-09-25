@@ -10,7 +10,7 @@
 html, body { margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
   background: var(--bg); color: var(--text); line-height: 1.45; padding-bottom: env(safe-area-inset-bottom); }
-header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 16px 8px; max-width: 900px; margin: 0 auto; }
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: calc(16px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 8px calc(16px + env(safe-area-inset-left)); max-width: 900px; margin: 0 auto; }
 .brand { display: flex; align-items: center; gap: 12px; }
 .brand img { border-radius: 10px; }
 h1 { font-size: 20px; margin: 0; }

@@ -48,6 +48,12 @@ test('static PWA assets and headers', async () => {
   assert.equal(sw.headers['cache-control'], 'no-cache');
   const mf = await h.app.inject({ method: 'GET', url: '/manifest.webmanifest' });
   assert.match(String(mf.headers['content-type']), /manifest\+json/);
+  assert.equal(mf.json().start_url, '/?source=pwa');
+  const mf2 = await h.app.inject({ method: 'GET', url: '/manifest.webmanifest?uid=user-abcdefgh-1234' });
+  assert.equal(mf2.json().start_url, '/?source=pwa&uid=user-abcdefgh-1234');
+  assert.equal(mf2.json().name, mf.json().name);
+  const mf3 = await h.app.inject({ method: 'GET', url: '/manifest.webmanifest?uid=<script>' });
+  assert.equal(mf3.json().start_url, '/?source=pwa', 'invalid uid ignored');
   await h.app.close();
 });
 

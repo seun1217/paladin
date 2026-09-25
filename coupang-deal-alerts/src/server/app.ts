@@ -1,6 +1,8 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { randomBytes } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Repos } from '../core/repos.js';
 import { isSensitivity } from '../core/repos.js';
 import type { Classifier } from '../core/taxonomy.js';
@@ -145,6 +147,22 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   // ------------------------------------------------------------------ meta
   app.get('/api/health', async () => ({ ok: true, time: now() }));
+
+  /**
+   * Manifest with a per-user start_url: an installed iOS web app has its own storage partition, so the
+   * anonymous id chosen in Safari would otherwise be lost on "Add to Home Screen".
+   */
+  const manifestPath = path.join(deps.publicDir, 'manifest.webmanifest');
+  app.get<{ Querystring: { uid?: string } }>('/manifest.webmanifest', {
+    schema: { querystring: { type: 'object', properties: { uid: { type: 'string', maxLength: 64 } } } },
+  }, async (req, reply) => {
+    const base = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+    const uid = req.query.uid;
+    if (uid && USER_ID_RE.test(uid)) base.start_url = `/?source=pwa&uid=${encodeURIComponent(uid)}`;
+    reply.header('Content-Type', 'application/manifest+json; charset=utf-8');
+    reply.header('Cache-Control', 'no-cache');
+    return reply.send(JSON.stringify(base));
+  });
 
   app.get('/api/config', async () => ({
     vapidPublicKey: deps.vapidPublicKey || null,

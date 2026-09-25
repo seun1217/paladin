@@ -36,7 +36,12 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/';
   event.waitUntil((async () => {
-    const target = new URL(url, self.location.origin);
+    let target = new URL(url, self.location.origin);
+    // The server builds absolute links from BASE_URL; if that is misconfigured (e.g. still localhost behind a proxy)
+    // keep the path but use the origin this worker was actually served from.
+    if (/^https?:$/.test(target.protocol) && target.origin !== self.location.origin && !/(^|\.)coupang\.com$/.test(target.hostname)) {
+      target = new URL(target.pathname + target.search, self.location.origin);
+    }
     if (target.origin === self.location.origin && !target.pathname.startsWith('/go/')) {
       const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const w of wins) {

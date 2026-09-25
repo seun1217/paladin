@@ -3,16 +3,31 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
 // ------------------------------------------------------------------ identity
+const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 function getUserId() {
   let id = null;
-  try { id = localStorage.getItem('dealalerts.userId'); } catch { /* ignore */ }
-  if (!id || !/^[A-Za-z0-9_-]{8,64}$/.test(id)) {
+  // An installed iOS web app has its own storage partition, so the id chosen while browsing in Safari would be lost.
+  // The manifest start_url therefore carries ?uid=<id>; adopt it once and strip it from the address bar.
+  try {
+    const u = new URL(location.href);
+    const fromUrl = u.searchParams.get('uid');
+    if (fromUrl && USER_ID_RE.test(fromUrl)) {
+      id = fromUrl;
+      try { localStorage.setItem('dealalerts.userId', id); } catch { /* ignore */ }
+      u.searchParams.delete('uid');
+      history.replaceState(null, '', u.pathname + (u.searchParams.toString() ? `?${u.searchParams}` : '') + u.hash);
+    }
+  } catch { /* ignore */ }
+  if (!id) { try { id = localStorage.getItem('dealalerts.userId'); } catch { /* ignore */ } }
+  if (!id || !USER_ID_RE.test(id)) {
     id = (crypto.randomUUID ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(''));
     try { localStorage.setItem('dealalerts.userId', id); } catch { /* ignore */ }
   }
   return id;
 }
 const userId = getUserId();
+// make "Add to Home Screen" install an app that starts as the same user
+try { const link = document.querySelector('link[rel="manifest"]'); if (link) link.href = `/manifest.webmanifest?uid=${encodeURIComponent(userId)}`; } catch { /* ignore */ }
 const api = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.body ? { 'content-type': 'application/json' } : {}), ...(opts.headers || {}) } }).then(async (r) => {
   const j = await r.json().catch(() => ({}));
   if (!r.ok) { const e = new Error(j.error || j.message || `HTTP ${r.status}`); e.status = r.status; e.code = j.code; throw e; }
@@ -108,7 +123,7 @@ function scheduleSave() {
   editVersion++;
   $('#save-state').textContent = '저장 중…';
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(savePrefs, 500);
+  saveTimer = setTimeout(() => { saveTimer = null; savePrefs(); }, 500);
 }
 async function savePrefs() {
   if (saving) { saveTimer = setTimeout(savePrefs, 300); return; }
@@ -128,6 +143,21 @@ async function savePrefs() {
     $('#save-state').textContent = `저장 실패: ${e.message}`;
   } finally { saving = false; }
 }
+
+/** Flush a pending debounced save when the page is hidden/closed (keepalive survives teardown). */
+function flushPendingSave() {
+  if (!saveTimer) return;
+  clearTimeout(saveTimer); saveTimer = null;
+  editVersion++; // mark as handled by this flush; a later foreground save will re-sync anyway
+  try {
+    fetch(`/api/users/${encodeURIComponent(userId)}/prefs`, {
+      method: 'PUT', keepalive: true, headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ subcategoryIds: prefs.subcategoryIds, sensitivity: prefs.sensitivity, dailyCap: prefs.dailyCap, quietHours: prefs.quietHours }),
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushPendingSave(); });
+window.addEventListener('pagehide', flushPendingSave);
 
 // ------------------------------------------------------------------ settings UI
 function renderSettings() {
@@ -158,8 +188,10 @@ function bindSettings() {
 }
 
 // ------------------------------------------------------------------ deals
+let dealsReq = 0;
 async function renderDeals() {
   const box = $('#deals');
+  const seq = ++dealsReq;
   let deals = [];
   try {
     if (dealFilter === 'mine') {
@@ -169,7 +201,8 @@ async function renderDeals() {
     } else {
       deals = (await api('/api/deals?limit=60')).deals;
     }
-  } catch (e) { box.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message)}</div>`; return; }
+  } catch (e) { if (seq === dealsReq) box.innerHTML = `<div class="empty">불러오기 실패: ${esc(e.message)}</div>`; return; }
+  if (seq !== dealsReq) return; // a newer request already rendered
   if (!deals.length) { box.innerHTML = '<div class="empty">최근 7일간 감지된 특가가 없습니다. 가격 이력이 쌓이면(보통 3일 이상) 알림이 시작됩니다.</div>'; return; }
   box.innerHTML = deals.map((d) => `
     <a class="deal" href="/go/${d.id}" target="_blank" rel="noopener sponsored">
