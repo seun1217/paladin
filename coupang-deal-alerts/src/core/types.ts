@@ -106,12 +106,21 @@ export interface DealDecision {
   discountFromBaseline: number | null;
 }
 
+export interface CategoryPrior {
+  /** typical "usual discount depth" (p90 of daily depth) across products of this category, 0..1 */
+  usualDepthP90: number;
+  /** number of products the prior was computed from */
+  sampleSize: number;
+}
+
 export interface DetectorContext {
   productId: string;
   categoryId: string;
   subcategoryId: string;
   /** epoch ms of the current poll */
   now: number;
+  /** category-level prior computed by the pipeline (outside the pure function); optional */
+  categoryPrior?: CategoryPrior | null;
 }
 
 export interface DetectorOutcome<S = unknown> {

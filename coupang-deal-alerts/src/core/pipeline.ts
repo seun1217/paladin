@@ -1,7 +1,7 @@
 import type { Repos } from './repos.js';
 import type { Classifier } from './taxonomy.js';
 import type { Dispatcher } from '../notify/dispatcher.js';
-import type { CategorySnapshot, DealRecord, Detector, ProductRecord } from './types.js';
+import type { CategoryPrior, CategorySnapshot, DealRecord, Detector, ProductRecord } from './types.js';
 
 export interface PipelineOptions {
   now?: () => number;
@@ -51,6 +51,8 @@ export class Pipeline {
     const deals: { deal: DealRecord; product: ProductRecord }[] = [];
     let newProducts = 0;
 
+    const prior = this.loadPrior(category.id);
+    const ownDepths: number[] = [];
     this.repos.tx(() => {
       const seen = new Set<string>();
       for (const p of snapshot.products) {
@@ -83,12 +85,14 @@ export class Pipeline {
         const state = this.repos.getAlertState<unknown>(p.productId);
         let outcome;
         try {
-          outcome = this.detector.decide(history, current, state, { productId: p.productId, categoryId: category.id, subcategoryId: sub.id, now: t });
+          outcome = this.detector.decide(history, current, state, { productId: p.productId, categoryId: category.id, subcategoryId: sub.id, now: t, categoryPrior: prior });
         } catch (e) {
           this.log.warn(`[pipeline] detector failed for ${p.productId}: ${(e as Error).message}`);
           continue;
         }
         this.repos.setAlertState(p.productId, outcome.newState, t);
+        const od = (outcome.newState as { ownUsualDepth?: unknown } | null)?.ownUsualDepth;
+        if (typeof od === 'number' && Number.isFinite(od)) ownDepths.push(od);
         const d = outcome.decision;
         if (d.alert && p.rank <= this.maxRankForAlert && d.baselinePrice !== null && d.discountFromBaseline !== null) {
           const deal = this.repos.insertDeal({
@@ -100,6 +104,8 @@ export class Pipeline {
         }
       }
     });
+
+    this.savePrior(category.id, ownDepths);
 
     let notified = 0;
     if (this.dispatcher) {
@@ -113,6 +119,24 @@ export class Pipeline {
       }
     }
     return { coupangCategoryId: snapshot.coupangCategoryId, products: snapshot.products.length, newProducts, deals: deals.map((d) => d.deal), notified };
+  }
+
+  /** Category prior = median of the "usual discount depth" of products with enough history in this category. */
+  private loadPrior(categoryId: string): CategoryPrior | null {
+    const raw = this.repos.getMeta(`prior:${categoryId}`);
+    if (!raw) return null;
+    try {
+      const j = JSON.parse(raw) as CategoryPrior;
+      return Number.isFinite(j.usualDepthP90) && j.sampleSize >= 5 ? j : null;
+    } catch { return null; }
+  }
+  private savePrior(categoryId: string, ownDepths: number[]): void {
+    if (ownDepths.length < 5) return;
+    const sorted = [...ownDepths].sort((a, b) => a - b);
+    const m = sorted.length >> 1;
+    const med = sorted.length % 2 ? sorted[m]! : (sorted[m - 1]! + sorted[m]!) / 2;
+    const prior: CategoryPrior = { usualDepthP90: Math.min(0.5, Math.max(0, med)), sampleSize: ownDepths.length };
+    try { this.repos.setMeta(`prior:${categoryId}`, JSON.stringify(prior)); } catch (e) { this.log.warn(`[pipeline] savePrior failed: ${(e as Error).message}`); }
   }
 
   /** Housekeeping: prune old observations and poll runs. */
