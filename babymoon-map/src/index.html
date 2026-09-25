@@ -1,0 +1,536 @@
+<title>태교여행 지도</title>
+<meta name="description" content="임신 중기 태교여행지의 리조트, 관광지, 행사, 프로모션을 기간과 조건으로 걸러 보는 인터랙티브 지도">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/*__LEAFLET_CSS__*/
+:root{
+  --bg:#F3F6F6; --surface:#FFFFFF; --surface-2:#EAF0F0; --ink:#172226; --muted:#5F7075; --line:#D8E1E2; --line-strong:#B9C7C9;
+  --accent:#0E7C86; --accent-ink:#FFFFFF; --accent-soft:#D8EEF0;
+  --sea:#D9E8EA; --land:#F6F1E6; --land-line:#C6D1D0; --land-detail:#EFE8D8;
+  --c-resort:#0E7C86; --c-attr:#5E8C4A; --c-event:#C7861A; --c-promo:#D6533A; --c-medical:#5B6B73;
+  --good:#2F8F5B; --warn:#C7861A; --bad:#C24A3B;
+  --shadow:0 6px 24px rgba(23,34,38,.10);
+  --font-ui:"IBM Plex Sans KR","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
+  --font-display:"Gowun Batang","Apple Myungjo","Noto Serif KR",Georgia,serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0F181B; --surface:#162226; --surface-2:#1D2C31; --ink:#E3ECEE; --muted:#96A8AD; --line:#26373C; --line-strong:#3A4F55;
+    --accent:#5AC8D2; --accent-ink:#0B1A1D; --accent-soft:#173A3F;
+    --sea:#0E1A1E; --land:#22323A; --land-line:#3C525A; --land-detail:#2A3D45;
+    --c-resort:#5AC8D2; --c-attr:#9FCB86; --c-event:#F0C05B; --c-promo:#FF8A6C; --c-medical:#9FB2B9;
+    --good:#6BCB90; --warn:#F0C05B; --bad:#F08A7C;
+    --shadow:0 6px 24px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0F181B; --surface:#162226; --surface-2:#1D2C31; --ink:#E3ECEE; --muted:#96A8AD; --line:#26373C; --line-strong:#3A4F55;
+  --accent:#5AC8D2; --accent-ink:#0B1A1D; --accent-soft:#173A3F;
+  --sea:#0E1A1E; --land:#22323A; --land-line:#3C525A; --land-detail:#2A3D45;
+  --c-resort:#5AC8D2; --c-attr:#9FCB86; --c-event:#F0C05B; --c-promo:#FF8A6C; --c-medical:#9FB2B9;
+  --good:#6BCB90; --warn:#F0C05B; --bad:#F08A7C;
+  --shadow:0 6px 24px rgba(0,0,0,.45);
+}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-ui);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr);gap:10px;padding-inline:16px;padding-block:10px}
+/* top bar */
+.topbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand h1{font-family:var(--font-display);font-weight:700;font-size:22px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.brand .sub{color:var(--muted);font-size:12.5px}
+.search{flex:1 1 220px;max-width:420px;position:relative}
+.search input{width:100%;padding:8px 12px 8px 34px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted)}
+.meta{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums;display:flex;gap:8px;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 11px;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+.btn:hover{border-color:var(--line-strong)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.small{padding:4px 8px;font-size:12px;border-radius:7px}
+.only-mobile{display:none}
+/* body grid */
+.body{display:grid;grid-template-columns:272px minmax(0,1fr) 400px;gap:12px;min-height:0}
+.filters,.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;min-height:0;overflow:auto;overscroll-behavior:contain}
+.filters{padding:14px 14px 18px}
+.filters h2,.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.fgroup{padding-block:12px;border-bottom:1px solid var(--line)}
+.fgroup:first-child{padding-top:0}
+.fgroup:last-child{border-bottom:0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dates label{display:grid;gap:3px;font-size:11.5px;color:var(--muted)}
+.dates input{padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--surface);width:100%;min-width:0;font-variant-numeric:tabular-nums}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:12px;line-height:1.3;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--ink)}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block}
+.chip .n{color:var(--muted);font-variant-numeric:tabular-nums}
+.check{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px}
+.check input{accent-color:var(--accent);width:15px;height:15px;margin:0}
+.range{display:grid;gap:4px}
+.range input[type=range]{width:100%;accent-color:var(--accent)}
+.range .val{font-variant-numeric:tabular-nums;font-weight:500}
+.fhead{display:flex;justify-content:space-between;align-items:center}
+.fhead h2{margin:0}
+.link{background:none;border:0;color:var(--accent);padding:0;font-size:12px;text-decoration:underline;text-underline-offset:2px}
+/* map */
+.mapwrap{position:relative;min-height:320px;border-radius:14px;overflow:hidden;border:1px solid var(--line);background:var(--sea)}
+#map{position:absolute;inset:0;background:var(--sea);font-family:var(--font-ui)}
+.leaflet-container{background:var(--sea)}
+.leaflet-bar a{background:var(--surface);color:var(--ink);border-bottom-color:var(--line)}
+.leaflet-bar a:hover{background:var(--surface-2)}
+.leaflet-control-attribution{background:color-mix(in srgb,var(--surface) 80%,transparent);color:var(--muted);font-size:10px}
+.leaflet-control-attribution a{color:var(--muted)}
+.leaflet-popup-content-wrapper{background:var(--surface);color:var(--ink);border-radius:10px;box-shadow:var(--shadow)}
+.leaflet-popup-tip{background:var(--surface)}
+.leaflet-popup-content{margin:10px 12px;font-size:13px;line-height:1.45}
+.leaflet-tooltip{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-size:12px;padding:3px 7px;box-shadow:none}
+.leaflet-tooltip-top:before{border-top-color:var(--line)}
+.leaflet-container a.leaflet-popup-close-button{color:var(--muted)}
+.pin{position:relative;display:inline-flex;align-items:center;gap:6px;background:var(--surface);color:var(--ink);border:1.5px solid var(--accent);border-radius:999px;padding:3px 9px 3px 7px;font-size:12px;font-weight:600;white-space:nowrap;box-shadow:var(--shadow);transform:translate(-50%,-100%);cursor:pointer;font-family:var(--font-ui)}
+.pin:after{content:"";position:absolute;left:50%;bottom:-6px;width:8px;height:8px;background:var(--surface);border-right:1.5px solid var(--accent);border-bottom:1.5px solid var(--accent);transform:translateX(-50%) rotate(45deg)}
+.pin .fit{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.pin.fit-good .fit{background:var(--good)}
+.pin.fit-mid .fit{background:var(--warn)}
+.pin.fit-low .fit{background:var(--bad)}
+.pin .cnt{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.pin.dim{opacity:.55;border-color:var(--line-strong)}
+.pin.dim:after{border-color:var(--line-strong)}
+.pin:hover,.pin.active{background:var(--accent);color:var(--accent-ink)}
+.pin:hover .cnt,.pin.active .cnt{color:var(--accent-ink)}
+.pin:hover:after,.pin.active:after{background:var(--accent)}
+.leaflet-div-icon{background:transparent;border:0}
+.mapui{position:absolute;z-index:500;display:flex;gap:6px;align-items:center}
+.mapui.tl{top:10px;left:56px}
+.mapui.bl{bottom:10px;left:10px}
+.legend{background:color-mix(in srgb,var(--surface) 92%,transparent);border:1px solid var(--line);border-radius:10px;padding:6px 10px;display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;border-radius:50%;background:var(--c);display:inline-block;border:1.5px solid var(--surface)}
+.mapmsg{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);padding:20px;text-align:center}
+/* panel */
+.panel{display:flex;flex-direction:column}
+.panel-head{padding:14px 16px 10px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--surface);z-index:2}
+.panel-body{padding:10px 16px 18px;display:grid;gap:8px;align-content:start}
+.summary{display:flex;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.summary b{color:var(--ink);font-weight:600}
+.card{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--surface);display:grid;gap:6px;cursor:pointer;text-align:left;width:100%}
+.card:hover{border-color:var(--accent)}
+.card .t{display:flex;align-items:baseline;gap:8px;justify-content:space-between}
+.card .name{font-family:var(--font-display);font-weight:700;font-size:16px}
+.card .en{color:var(--muted);font-size:12px}
+.card .facts{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.card .facts b{color:var(--ink);font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;line-height:1.5;border:1px solid transparent}
+.pill.good{background:color-mix(in srgb,var(--good) 16%,transparent);color:var(--good)}
+.pill.warn{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pill.bad{background:color-mix(in srgb,var(--bad) 16%,transparent);color:var(--bad)}
+.pill.neutral{background:var(--surface-2);color:var(--muted)}
+.pill.cat{background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
+.pill.new{background:var(--accent);color:var(--accent-ink)}
+.counts{display:flex;gap:8px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.counts i{width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block;margin-right:4px}
+.months{display:grid;grid-template-columns:repeat(12,1fr);gap:2px}
+.months span{height:18px;border-radius:4px;background:var(--surface-2);font-size:10px;display:grid;place-items:center;color:var(--muted);font-variant-numeric:tabular-nums;position:relative}
+.months span.best{background:color-mix(in srgb,var(--good) 28%,transparent);color:var(--ink)}
+.months span.rain{background:color-mix(in srgb,var(--warn) 30%,transparent);color:var(--ink)}
+.months span.sel:after{content:"";position:absolute;inset:-2px;border:2px solid var(--accent);border-radius:5px}
+.months.mini span{height:6px;font-size:0;border-radius:2px}
+.mlegend{display:flex;gap:10px;font-size:11px;color:var(--muted)}
+.mlegend i{display:inline-block;width:10px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.rhead{display:grid;gap:8px}
+.rhead .title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.rhead .title h3{font-family:var(--font-display);font-size:22px;margin:0;font-weight:700}
+.rhead .title .en{color:var(--muted);font-size:13px}
+.facts2{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12.5px}
+.facts2 div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:3px 0}
+.facts2 span:first-child{color:var(--muted)}
+.facts2 span:last-child{font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:4px 0 0;overflow-x:auto}
+.tab{border:0;background:none;padding:8px 10px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.item{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.item.sel{border-color:var(--accent)}
+.item .head{display:grid;grid-template-columns:10px 1fr auto;gap:10px;align-items:center;padding:9px 12px;width:100%;background:none;border:0;text-align:left}
+.item .head:hover{background:var(--surface-2)}
+.item .dot{width:10px;height:10px;border-radius:50%;background:var(--c);border:1.5px solid var(--surface);box-shadow:0 0 0 1px var(--c)}
+.item .nm{font-weight:600;font-size:13.5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.item .sub{color:var(--muted);font-size:12px}
+.item .right{text-align:right;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.item .right b{color:var(--ink);font-weight:600;display:block}
+.item .detail{padding:2px 12px 12px 32px;display:grid;gap:8px;font-size:13px;border-top:1px dashed var(--line)}
+.item .detail p{margin:0}
+.tags{display:flex;flex-wrap:wrap;gap:4px}
+.tag{background:var(--surface-2);border-radius:6px;padding:1px 7px;font-size:11.5px;color:var(--muted)}
+.tag.bm{background:var(--accent-soft);color:var(--ink)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:12.5px}
+.kv span:nth-child(odd){color:var(--muted)}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.empty{color:var(--muted);font-size:13px;padding:14px 4px;text-align:center}
+.tips{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+.note{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:10px;margin-top:6px}
+.dday{font-weight:600}
+.dday.soon{color:var(--bad)}
+.conf{font-size:10.5px;color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 50%,transparent);border-radius:4px;padding:0 4px}
+.handle{display:none}
+.backdrop{display:none}
+@media (max-width:1100px){
+  .body{grid-template-columns:minmax(0,1fr) 380px}
+  .only-mobile{display:inline-flex}
+  .filters{position:fixed;left:0;top:0;bottom:0;width:300px;max-width:88vw;z-index:1200;border-radius:0 14px 14px 0;transform:translateX(-105%);transition:transform .25s ease;padding-top:calc(14px + env(safe-area-inset-top,0px))}
+  .filters.open{transform:none}
+  .backdrop{display:block;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:1100;opacity:0;pointer-events:none;transition:opacity .25s}
+  .backdrop.show{opacity:1;pointer-events:auto}
+}
+@media (max-width:760px){
+  #app{padding-inline:16px;padding-block:8px;gap:8px}
+  .brand .sub{display:none}
+  .meta{display:none}
+  .body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto}
+  .panel{max-height:46vh;transition:max-height .25s ease}
+  .panel.tall{max-height:78vh}
+  .handle{display:grid;place-items:center;padding:6px 0 0}
+  .handle button{width:44px;height:5px;border-radius:3px;background:var(--line-strong);border:0;padding:0}
+  .panel-head{padding-top:6px;position:static}
+  .tabs{position:sticky;top:0;background:var(--surface);z-index:2}
+  .mapwrap{min-height:200px}
+  .mapui.bl{display:none}
+  .facts2{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  .filters,.panel,.backdrop{transition:none}
+}
+</style>
+
+<div id="app">
+  <header class="topbar">
+    <div class="brand"><h1>태교여행 지도</h1><span class="sub">임신 중기 여행지 · 리조트 · 행사 · 프로모션</span></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="지역, 리조트, 행사, 프로모션 검색" autocomplete="off" aria-label="검색">
+    </div>
+    <div class="meta" id="meta"></div>
+    <button class="btn only-mobile" id="toggleFilters" aria-controls="filters" aria-expanded="false">필터</button>
+  </header>
+  <div class="body">
+    <aside class="filters" id="filters" aria-label="필터">
+      <div class="fgroup">
+        <div class="fhead"><h2>여행 기간</h2><button class="link" id="resetAll">전체 초기화</button></div>
+        <div class="dates">
+          <label>출발<input type="date" id="from"></label>
+          <label>귀국<input type="date" id="to"></label>
+        </div>
+        <div class="chips" id="presets" style="margin-top:8px"></div>
+      </div>
+      <div class="fgroup">
+        <h2>표시 항목</h2>
+        <div class="chips" id="cats"></div>
+      </div>
+      <div class="fgroup">
+        <div class="fhead"><h2>국가</h2><button class="link" id="allCountries">모두 선택</button></div>
+        <div class="chips" id="countries"></div>
+      </div>
+      <div class="fgroup">
+        <h2>이동</h2>
+        <div class="range"><div class="row" style="justify-content:space-between"><span>인천 출발 비행시간</span><span class="val" id="flightVal"></span></div><input type="range" id="flight" min="1" max="12" step="0.5" value="12"></div>
+        <label class="check"><input type="checkbox" id="direct">직항이 있는 곳만</label>
+      </div>
+      <div class="fgroup">
+        <h2>건강 · 예산</h2>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">지카바이러스 위험도</div>
+        <div class="chips" id="zika"></div>
+        <div style="font-size:12px;color:var(--muted);margin:10px 0 4px">2인 4박 총경비 수준</div>
+        <div class="chips" id="budget"></div>
+      </div>
+      <div class="fgroup">
+        <h2>프로모션</h2>
+        <label class="check"><input type="checkbox" id="deadline">예약 마감 14일 이내만</label>
+        <label class="check"><input type="checkbox" id="onlyPromo">프로모션 있는 리조트만</label>
+      </div>
+    </aside>
+    <div class="backdrop" id="backdrop"></div>
+    <main class="mapwrap">
+      <div id="map" role="application" aria-label="지도"></div>
+      <div class="mapui tl" id="mapTl"></div>
+      <div class="mapui bl"><div class="legend" id="legend"></div></div>
+    </main>
+    <section class="panel" id="panel" aria-live="polite">
+      <div class="handle"><button id="handle" aria-label="패널 크기 전환"></button></div>
+      <div class="panel-head" id="panelHead"></div>
+      <div class="panel-body" id="panelBody"></div>
+    </section>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(async function(){
+'use strict';
+let DATA = "__DATA_JSON__";
+let GEO = "__GEO_JSON__";
+if (typeof DATA === 'string') { // 개발 모드: 빌드 전 템플릿은 data 폴더에서 직접 읽음
+  try { DATA = await (await fetch('../data/babymoon.json')).json(); GEO = await (await fetch('../data/geo.json')).json(); }
+  catch (e) { document.getElementById('map').innerHTML = '<div class="mapmsg">데이터를 불러오지 못했습니다. build.js로 빌드하거나 로컬 서버에서 여세요.</div>'; return; }
+}
+
+/* ---------- 유틸 ---------- */
+const $ = (s, el) => (el || document).querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad2 = n => String(n).padStart(2, '0');
+const iso = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const addMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() + n); return x; };
+const fmtD = s => s ? s.slice(5).replace('-', '.') : '';
+const fmtRange = (a, b) => a && b ? (a === b ? fmtD(a) : fmtD(a) + ' ~ ' + fmtD(b)) : (a || b ? fmtD(a || b) : '');
+const fmtRangeY = (a, b) => a && b ? (a.slice(0,4) === b.slice(0,4) ? a.slice(0,4) + '.' + fmtRange(a,b) : a.replace(/-/g,'.') + ' ~ ' + b.replace(/-/g,'.')) : (a || b ? (a || b).replace(/-/g,'.') : '기간 미표기');
+const krw = n => n == null ? '' : (n >= 10000 ? '약 ' + Math.round(n / 10000).toLocaleString('ko-KR') + '만원' : n.toLocaleString('ko-KR') + '원');
+const flag = cc => cc && cc.length === 2 ? String.fromCodePoint(...[...cc.toUpperCase()].map(c => 0x1F1E6 + c.charCodeAt(0) - 65)) : '';
+const normLng = l => l < -30 ? l + 360 : l;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TODAY = new Date(); TODAY.setHours(0,0,0,0); const TODAY_S = iso(TODAY);
+const daysUntil = s => Math.round((parse(s) - TODAY) / 86400000);
+const overlaps = (a1, a2, b1, b2) => (!a2 || a2 >= b1) && (!a1 || a1 <= b2);
+const ZIKA = { none: ['없음', 'good'], low: ['낮음', 'good'], moderate: ['주의', 'warn'], high: ['위험', 'bad'], unknown: ['미상', 'neutral'] };
+const CATS = [
+  { key: 'resort', label: '리조트·호텔', c: 'var(--c-resort)' },
+  { key: 'attraction', label: '관광지·스파', c: 'var(--c-attr)' },
+  { key: 'event', label: '행사·시즌', c: 'var(--c-event)' },
+  { key: 'promo', label: '프로모션', c: 'var(--c-promo)' },
+];
+const catOfPlace = p => (p.type === 'resort' || p.type === 'hotel') ? 'resort' : p.type === 'medical' ? 'medical' : 'attraction';
+const catColor = k => ({ resort: 'var(--c-resort)', attraction: 'var(--c-attr)', event: 'var(--c-event)', promo: 'var(--c-promo)', medical: 'var(--c-medical)' })[k];
+const typeLabel = t => ({ resort: '리조트', hotel: '호텔', attraction: '관광지', spa: '스파', dining: '식당·카페', medical: '의료', festival: '축제', seasonal: '시즌', exhibition: '전시', market: '마켓', sports: '스포츠', performance: '공연', other: '기타', airline: '항공', agency: '여행사' })[t] || t;
+const budgetLabel = b => ['', '150만원 미만', '150~300만원', '300~500만원', '500만원 이상'][b] || '';
+const NEW_DAYS = 21;
+const isNew = it => it.addedAt && (parse(DATA.meta.updatedAt) - parse(it.addedAt)) / 86400000 <= NEW_DAYS;
+
+/* ---------- 데이터 색인 ---------- */
+const regions = DATA.regions;
+const byRegion = {}; regions.forEach(r => byRegion[r.id] = { region: r, places: [], events: [], promotions: [] });
+DATA.places.forEach(p => byRegion[p.regionId] && byRegion[p.regionId].places.push(p));
+DATA.events.forEach(e => byRegion[e.regionId] && byRegion[e.regionId].events.push(e));
+DATA.promotions.forEach(m => byRegion[m.regionId] && byRegion[m.regionId].promotions.push(m));
+const placeById = {}; DATA.places.forEach(p => placeById[p.id] = p);
+const countries = [...new Set(regions.map(r => r.country))];
+
+/* ---------- 상태 ---------- */
+const defaults = () => ({
+  from: TODAY_S, to: iso(addMonths(TODAY, 3)),
+  cats: { resort: true, attraction: true, event: true, promo: true },
+  countries: Object.fromEntries(countries.map(c => [c, true])),
+  maxFlight: 12, direct: false,
+  zika: { none: true, low: true, moderate: true, high: false, unknown: true },
+  budget: { 1: true, 2: true, 3: true, 4: true },
+  deadline: false, onlyPromo: false, q: '',
+  region: null, tab: 'resort', item: null,
+});
+let S = defaults();
+try { const saved = JSON.parse(localStorage.getItem('bm-filters') || 'null'); if (saved && saved.v === 1) Object.assign(S, saved.s, { region: null, item: null }); } catch (e) {}
+const hot = window.claude && window.claude.hot;
+function persist() { try { const { region, item, tab, ...s } = S; localStorage.setItem('bm-filters', JSON.stringify({ v: 1, s })); } catch (e) {} }
+
+/* ---------- 필터 로직 ---------- */
+const qHit = (q, ...fields) => !q || fields.some(f => f && String(Array.isArray(f) ? f.join(' ') : f).toLowerCase().includes(q));
+function monthsIn(from, to) { const out = new Set(); let d = new Date(parse(from).getFullYear(), parse(from).getMonth(), 1); const end = parse(to); let n = 0; while (d <= end && n < 12) { out.add(d.getMonth() + 1); d.setMonth(d.getMonth() + 1); n++; } if (!out.size) out.add(parse(from).getMonth() + 1); return out; }
+function fit(r) { const ms = monthsIn(S.from, S.to); let best = 0, rain = 0; ms.forEach(m => { if (r.bestMonths.includes(m)) best++; if (r.rainyMonths.includes(m)) rain++; }); const score = best / ms.size; return { score, rain: rain / ms.size, cls: score >= 0.67 ? 'good' : score >= 0.34 || rain === 0 ? 'mid' : 'low', label: score >= 0.67 ? '최적 시기' : rain / ms.size >= 0.5 ? '우기 주의' : score > 0 ? '보통' : '비수기' }; }
+function regionBase(r) { return S.countries[r.country] && (S.maxFlight >= 12 || r.flightHours <= S.maxFlight) && (!S.direct || r.directFlight) && S.zika[r.zika] !== false && S.budget[r.budgetLevel] !== false; }
+function visible(id) {
+  const g = byRegion[id]; const r = g.region; const q = S.q.trim().toLowerCase();
+  const regionMatch = qHit(q, r.name, r.nameEn, r.country);
+  const promos = g.promotions.filter(m => S.cats.promo && (!m.bookEnd || m.bookEnd >= TODAY_S) && overlaps(m.travelStart, m.travelEnd, S.from, S.to) && (!S.deadline || (m.bookEnd && daysUntil(m.bookEnd) <= 14)) && (regionMatch || qHit(q, m.title, m.providerName, m.summary)));
+  const promoPlace = new Set(promos.map(m => m.placeId).filter(Boolean));
+  const places = g.places.filter(p => { const c = catOfPlace(p); if (c === 'medical') return regionMatch || qHit(q, p.name, p.nameEn); if (!S.cats[c]) return false; if (S.onlyPromo && c === 'resort' && !promoPlace.has(p.id)) return false; return regionMatch || qHit(q, p.name, p.nameEn, p.area, p.tags, p.babymoon, p.description); });
+  const events = g.events.filter(e => S.cats.event && overlaps(e.start, e.end, S.from, S.to) && (regionMatch || qHit(q, e.name, e.nameEn, e.venue, e.description)));
+  const nonMed = places.filter(p => catOfPlace(p) !== 'medical');
+  const any = nonMed.length + events.length + promos.length;
+  const show = regionBase(r) && (q ? (regionMatch || any > 0) : true) && (S.onlyPromo ? promos.length > 0 : true);
+  return { region: r, places, events, promos, promoPlace, any, show, fit: fit(r) };
+}
+function allVisible() { return regions.map(r => visible(r.id)); }
+
+/* ---------- 지도 ---------- */
+let map, worldLayer, regionLayer, pinLayer, itemLayer, markers = {};
+const hasLeaflet = typeof L !== 'undefined';
+if (!hasLeaflet) { $('#map').innerHTML = '<div class="mapmsg">지도 라이브러리를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 새로고침하세요. 오른쪽 목록은 계속 사용할 수 있습니다.</div>'; }
+function shiftGeom(mp) { return { type: 'MultiPolygon', coordinates: mp.coordinates.map(poly => poly.map(ring => ring.map(([x, y]) => [normLng(x), y]))) }; }
+function worldGeom() { const cs = []; for (const poly of GEO.world.geometry.coordinates) { cs.push(poly); let minX = 180; for (const [x] of poly[0]) if (x < minX) minX = x; if (minX < -30) cs.push(poly.map(ring => ring.map(([x, y]) => [x + 360, y]))); } return { type: 'MultiPolygon', coordinates: cs }; }
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function landStyle(detail) { const dim = !detail && !!S.region; return { color: css('--land-line'), weight: detail ? 1 : dim ? 0 : 0.6, fillColor: detail ? css('--land-detail') : css('--land'), fillOpacity: dim ? 0.45 : 1, interactive: false }; }
+if (hasLeaflet) {
+  map = L.map('map', { preferCanvas: true, worldCopyJump: false, minZoom: 2, maxZoom: 15, zoomControl: true, attributionControl: true, zoomSnap: 0.5, maxBounds: [[-45, 40], [65, 240]], maxBoundsViscosity: 0.8 });
+  map.attributionControl.setPrefix('').addAttribution('지형: Natural Earth');
+  worldLayer = L.geoJSON({ type: 'Feature', geometry: worldGeom() }, { style: landStyle(false) }).addTo(map);
+  pinLayer = L.layerGroup().addTo(map); itemLayer = L.layerGroup().addTo(map);
+  map.on('zoomend', () => { if (S.region && map.getZoom() <= 5.5) closeRegion(false); });
+  matchMedia('(prefers-color-scheme: dark)').addEventListener('change', restyle);
+  new MutationObserver(restyle).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+}
+function restyle() { if (!hasLeaflet) return; worldLayer.setStyle(landStyle(false)); if (regionLayer) regionLayer.setStyle(landStyle(true)); renderMap(); }
+function pinHtml(v) { return `<span class="pin fit-${v.fit.cls}${v.any ? '' : ' dim'}${S.region === v.region.id ? ' active' : ''}" title="${esc(v.fit.label)}"><i class="fit"></i>${esc(v.region.name)}<span class="cnt">${v.any}</span></span>`; }
+function renderPins(vis) {
+  if (!hasLeaflet) return; pinLayer.clearLayers();
+  vis.filter(v => v.show).forEach(v => {
+    const m = L.marker([v.region.lat, normLng(v.region.lng)], { icon: L.divIcon({ className: '', html: pinHtml(v), iconSize: [0, 0], iconAnchor: [0, 0] }), keyboard: true, zIndexOffset: S.region === v.region.id ? 1000 : 0 });
+    m.on('click', () => openRegion(v.region.id)); m.addTo(pinLayer);
+  });
+}
+function renderItems(v) {
+  if (!hasLeaflet) return; itemLayer.clearLayers(); markers = {}; if (!v) return;
+  const add = (it, cat, latlng, popup) => {
+    const sel = S.item === it.id; const color = css(cat === 'resort' ? '--c-resort' : cat === 'attraction' ? '--c-attr' : cat === 'event' ? '--c-event' : cat === 'medical' ? '--c-medical' : '--c-promo');
+    const m = L.circleMarker(latlng, { radius: sel ? 10 : 7, color: css('--surface'), weight: 2, fillColor: color, fillOpacity: 0.95, pane: 'markerPane' });
+    if (cat === 'resort' && v.promoPlace.has(it.id)) L.circleMarker(latlng, { radius: sel ? 14 : 11, color: css('--c-promo'), weight: 2, fill: false, dashArray: '3 3', interactive: false, pane: 'markerPane' }).addTo(itemLayer);
+    m.bindTooltip(it.name, { direction: 'top', offset: [0, -8] }); m.bindPopup(popup, { maxWidth: 260 });
+    m.on('click', () => selectItem(it.id, cat, false)); m.addTo(itemLayer); markers[it.id] = m;
+  };
+  v.places.forEach(p => { const c = catOfPlace(p); add(p, c, [p.lat, normLng(p.lng)], `<b>${esc(p.name)}</b> <span style="color:var(--muted)">${esc(typeLabel(p.type))}</span><br>${esc(p.description.slice(0, 90))}${p.description.length > 90 ? '…' : ''}`); });
+  v.events.forEach(e => add(e, 'event', [e.lat, normLng(e.lng)], `<b>${esc(e.name)}</b><br><span style="color:var(--muted)">${esc(fmtRangeY(e.start, e.end))}</span>`));
+}
+function renderMap() { const vis = allVisible(); renderPins(vis); renderItems(S.region ? vis.find(v => v.region.id === S.region) : null); if (hasLeaflet) worldLayer.setStyle(landStyle(false)); }
+function fitWorld() { if (!hasLeaflet) return; const pts = regions.map(r => [r.lat, normLng(r.lng)]); map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], animate: !reduced }); }
+function openRegion(id, keepItem) {
+  S.region = id; if (!keepItem) { S.item = null; S.tab = S.tab === 'info' ? 'resort' : S.tab; }
+  if (matchMedia('(max-width: 760px)').matches) { $('#panel').classList.add('tall'); if (hasLeaflet) setTimeout(() => map.invalidateSize(), 300); }
+  if (hasLeaflet) {
+    if (regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
+    const g = GEO.regions[id]; if (g) regionLayer = L.geoJSON({ type: 'Feature', geometry: shiftGeom(g.geometry) }, { style: landStyle(true) }).addTo(map);
+    const b = g ? g.bbox : null; const r = byRegion[id].region;
+    const cfgBox = b ? L.latLngBounds([[b[1], normLng(b[0])], [b[3], normLng(b[2])]]) : null;
+    const pts = [...byRegion[id].places, ...byRegion[id].events].map(x => [x.lat, normLng(x.lng)]); pts.push([r.lat, normLng(r.lng)]);
+    const target = L.latLngBounds(pts).pad(0.25);
+    map.flyToBounds(target, { animate: !reduced, duration: 0.9, maxZoom: Math.max(r.zoom || 11, 9) });
+  }
+  try { history.replaceState(null, '', '#' + id); } catch (e) {}
+  render();
+}
+function closeRegion(move) {
+  S.region = null; S.item = null; if (hasLeaflet && regionLayer) { map.removeLayer(regionLayer); regionLayer = null; }
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  render(); if (move !== false) fitWorld();
+}
+function selectItem(id, cat, fly) {
+  S.item = S.item === id ? null : id; if (cat === 'promo') S.tab = 'promo'; else if (cat === 'event') S.tab = 'event'; else if (cat === 'medical') S.tab = 'info'; else S.tab = cat;
+  render();
+  if (S.item && hasLeaflet && fly !== false) { const m = markers[id]; if (m) { map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 12), { animate: !reduced }); m.openPopup(); } }
+  if (S.item) { const el = document.getElementById('it-' + id); if (el) el.scrollIntoView({ block: 'nearest', behavior: reduced ? 'auto' : 'smooth' }); }
+}
+
+/* ---------- 패널 ---------- */
+function summaryHtml(vis) {
+  const shown = vis.filter(v => v.show); const n = k => shown.reduce((a, v) => a + (k === 'resort' ? v.places.filter(p => catOfPlace(p) === 'resort').length : k === 'attraction' ? v.places.filter(p => catOfPlace(p) === 'attraction').length : k === 'event' ? v.events.length : v.promos.length), 0);
+  return `<div class="summary"><span><b>${shown.length}</b>개 지역</span><span>·</span><span><b>${n('resort')}</b> 리조트</span><span><b>${n('attraction')}</b> 관광지</span><span><b>${n('event')}</b> 행사</span><span><b>${n('promo')}</b> 프로모션</span></div>`;
+}
+function monthStrip(r, mini) { const sel = monthsIn(S.from, S.to); return `<div class="months${mini ? ' mini' : ''}" aria-label="월별 적합도">${Array.from({ length: 12 }, (_, i) => i + 1).map(m => `<span class="${r.bestMonths.includes(m) ? 'best' : r.rainyMonths.includes(m) ? 'rain' : ''}${sel.has(m) ? ' sel' : ''}" title="${m}월${r.bestMonths.includes(m) ? ' 최적' : r.rainyMonths.includes(m) ? ' 우기' : ''}">${mini ? '' : m}</span>`).join('')}</div>`; }
+function renderWorldPanel(vis) {
+  const shown = vis.filter(v => v.show).sort((a, b) => (b.fit.score - a.fit.score) || (a.region.flightHours - b.region.flightHours));
+  $('#panelHead').innerHTML = `<h2>여행지 ${shown.length}곳 · ${esc(fmtRangeY(S.from, S.to))}</h2>${summaryHtml(vis)}`;
+  $('#panelBody').innerHTML = shown.length ? shown.map(v => { const r = v.region; return `<button class="card" data-region="${r.id}">
+      <div class="t"><span><span class="name">${esc(r.name)}</span> <span class="en">${flag(r.countryCode)} ${esc(r.nameEn)}</span></span><span class="pill ${v.fit.cls === 'good' ? 'good' : v.fit.cls === 'mid' ? 'warn' : 'bad'}">${esc(v.fit.label)}</span></div>
+      <div class="facts"><span>✈ <b>${r.flightHours}h</b>${r.directFlight ? ' 직항' : ' 경유'}</span><span>시차 <b>${r.timeDiffHours > 0 ? '+' : ''}${r.timeDiffHours}h</b></span><span>지카 <b class="pill ${ZIKA[r.zika][1]}" style="padding:0 6px">${ZIKA[r.zika][0]}</b></span><span>예산 <b>${'●'.repeat(r.budgetLevel)}${'○'.repeat(4 - r.budgetLevel)}</b></span></div>
+      ${monthStrip(r, true)}
+      <div class="counts"><span><i style="--c:var(--c-resort)"></i>${v.places.filter(p => catOfPlace(p) === 'resort').length}</span><span><i style="--c:var(--c-attr)"></i>${v.places.filter(p => catOfPlace(p) === 'attraction').length}</span><span><i style="--c:var(--c-event)"></i>${v.events.length} 행사</span><span><i style="--c:var(--c-promo)"></i>${v.promos.length} 프로모션</span></div>
+    </button>`; }).join('') + `<div class="note">데이터 기준일 ${esc(DATA.meta.updatedAt)}. 프로모션 조건과 행사 일정은 예약 전 출처에서 다시 확인하세요. 임신 중 여행은 담당 의사와 상의하고, 항공사별 임신 주수 탑승 규정(보통 32~36주 이후 의사소견서 요구)을 확인하세요.</div>` : `<div class="empty">조건에 맞는 여행지가 없습니다. 기간이나 필터를 조정해 보세요.</div>`;
+  $('#panelBody').querySelectorAll('[data-region]').forEach(b => b.addEventListener('click', () => openRegion(b.dataset.region)));
+}
+function itemRow(it, cat, right, sub, detail) {
+  const sel = S.item === it.id; const badges = [isNew(it) ? '<span class="pill new">NEW</span>' : '', it.confidence === 'low' ? '<span class="conf" title="출처 확인 필요 또는 일정 미확정">확인 필요</span>' : ''].join('');
+  return `<div class="item${sel ? ' sel' : ''}" id="it-${esc(it.id)}"><button class="head" data-item="${esc(it.id)}" data-cat="${cat}" aria-expanded="${sel}"><span class="dot" style="--c:${catColor(cat)}"></span><span><span class="nm">${esc(it.name || it.title)} ${badges}</span><span class="sub">${sub}</span></span><span class="right">${right}</span></button>${sel ? `<div class="detail">${detail}</div>` : ''}</div>`;
+}
+const srcLink = (u, label) => u ? `<a class="btn small" href="${esc(u)}" target="_blank" rel="noopener">${label || '출처'} ↗</a>` : '';
+function renderRegionPanel(v) {
+  const r = v.region; const z = ZIKA[r.zika];
+  const resorts = v.places.filter(p => catOfPlace(p) === 'resort').sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  const attrs = v.places.filter(p => catOfPlace(p) === 'attraction');
+  const meds = byRegion[r.id].places.filter(p => catOfPlace(p) === 'medical');
+  const events = [...v.events].sort((a, b) => a.start.localeCompare(b.start));
+  const promos = [...v.promos].sort((a, b) => (a.bookEnd || '9999').localeCompare(b.bookEnd || '9999'));
+  const tabs = [['resort', '리조트', resorts.length], ['attraction', '관광지', attrs.length], ['event', '행사', events.length], ['promo', '프로모션', promos.length], ['info', '정보', null]];
+  $('#panelHead').innerHTML = `<div class="rhead">
+    <div class="row" style="justify-content:space-between"><button class="btn small ghost" id="back">← 전체 지도</button><span class="pill ${v.fit.cls === 'good' ? 'good' : v.fit.cls === 'mid' ? 'warn' : 'bad'}">${esc(v.fit.label)} · ${esc(fmtRangeY(S.from, S.to))}</span></div>
+    <div class="title"><h3>${esc(r.name)}</h3><span class="en">${flag(r.countryCode)} ${esc(r.nameEn)} · ${esc(r.country)}</span></div>
+    <p style="margin:0;font-size:13px">${esc(r.summary)}</p>
+    <div class="facts2"><div><span>비행</span><span>${r.flightHours}h ${r.directFlight ? '직항' : '경유'}</span></div><div><span>시차</span><span>${r.timeDiffHours > 0 ? '+' : ''}${r.timeDiffHours}h</span></div><div><span>비자</span><span>${esc(r.visa)}</span></div><div><span>지카</span><span class="pill ${z[1]}">${z[0]}</span></div><div><span>통화</span><span>${esc(r.currency)}</span></div><div><span>예산(2인 4박)</span><span>${esc(budgetLabel(r.budgetLevel))}</span></div></div>
+    ${monthStrip(r, false)}<div class="mlegend"><span><i style="background:color-mix(in srgb,var(--good) 28%,transparent)"></i>최적</span><span><i style="background:color-mix(in srgb,var(--warn) 30%,transparent)"></i>우기·비수기</span><span><i style="border:2px solid var(--accent);box-sizing:border-box"></i>선택 기간</span></div>
+    <div class="tabs" role="tablist">${tabs.map(([k, l, n]) => `<button class="tab" role="tab" data-tab="${k}" aria-selected="${S.tab === k}">${l}${n == null ? '' : ' ' + n}</button>`).join('')}</div></div>`;
+  let body = '';
+  if (S.tab === 'resort') body = resorts.length ? resorts.map(p => itemRow(p, 'resort', `${p.rating ? '<b>★ ' + p.rating.toFixed(1) + '</b>' : ''}${p.priceFromKRW ? krw(p.priceFromKRW) + '~' : ''}`, `${esc(p.area || '')}${p.area ? ' · ' : ''}${esc(typeLabel(p.type))}${v.promoPlace.has(p.id) ? ' · <span style="color:var(--c-promo);font-weight:600">프로모션</span>' : ''}`, placeDetail(p, v))).join('') : `<div class="empty">${S.onlyPromo ? '프로모션이 있는 리조트가 없습니다.' : '표시할 리조트가 없습니다.'}</div>`;
+  else if (S.tab === 'attraction') body = attrs.length ? attrs.map(p => itemRow(p, 'attraction', p.priceFromKRW ? krw(p.priceFromKRW) : '', `${esc(p.area || '')}${p.area ? ' · ' : ''}${esc(typeLabel(p.type))}`, placeDetail(p, v))).join('') : '<div class="empty">표시할 관광지가 없습니다.</div>';
+  else if (S.tab === 'event') body = events.length ? events.map(e => itemRow(e, 'event', `<b>${esc(fmtRange(e.start, e.end))}</b>${e.start.slice(0, 4)}`, `${esc(e.venue || '')}${e.venue ? ' · ' : ''}${esc(typeLabel(e.type))}`, `<p>${esc(e.description)}</p><div class="kv"><span>일정</span><span>${esc(fmtRangeY(e.start, e.end))}</span>${e.venue ? `<span>장소</span><span>${esc(e.venue)}</span>` : ''}</div><div class="actions"><button class="btn small" data-fly="${esc(e.id)}">지도에서 보기</button>${srcLink(e.url)}</div>`)).join('') : `<div class="empty">${esc(fmtRangeY(S.from, S.to))} 기간에 확인된 행사가 없습니다.</div>`;
+  else if (S.tab === 'promo') body = promos.length ? promos.map(m => { const d = m.bookEnd ? daysUntil(m.bookEnd) : null; return itemRow(m, 'promo', `${d != null ? `<b class="dday${d <= 14 ? ' soon' : ''}">예약 D-${d}</b>` : '<b>마감 미표기</b>'}${m.priceKRW ? krw(m.priceKRW) : ''}`, `${esc(m.providerName)} · ${esc(typeLabel(m.provider))}${m.placeId && placeById[m.placeId] ? ' · ' + esc(placeById[m.placeId].name) : ''}`, `<p>${esc(m.summary)}</p><div class="kv"><span>예약 기간</span><span>${esc(fmtRangeY(m.bookStart, m.bookEnd))}</span><span>투숙·여행 기간</span><span>${esc(fmtRangeY(m.travelStart, m.travelEnd))}</span>${m.conditions ? `<span>조건</span><span>${esc(m.conditions)}</span>` : ''}${m.priceKRW ? `<span>가격</span><span>${krw(m.priceKRW)}</span>` : ''}</div><div class="actions">${m.placeId && markers[m.placeId] ? `<button class="btn small" data-fly="${esc(m.placeId)}">리조트 위치</button>` : ''}${srcLink(m.url, '프로모션 페이지')}</div>`); }).join('') : '<div class="empty">현재 예약 가능한 프로모션이 없습니다. 기간을 넓히거나 마감 필터를 해제해 보세요.</div>';
+  else body = `<h2>여행 팁</h2><ul class="tips">${r.tips.map(t => `<li>${esc(t)}</li>`).join('')}</ul><h2 style="margin-top:8px">지카바이러스</h2><p style="margin:0;font-size:13px">${esc(r.zikaNote)}</p><h2 style="margin-top:8px">의료</h2><p style="margin:0;font-size:13px">${esc(r.medicalNote)}</p>${meds.map(p => itemRow(p, 'medical', '', esc(p.area || ''), placeDetail(p, v))).join('')}<h2 style="margin-top:8px">항공</h2><p style="margin:0;font-size:13px">${esc(r.flightNote || '')}</p>${r.sources && r.sources.length ? `<div class="note">출처: ${r.sources.slice(0, 6).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//, '').split('/')[0])}</a>`).join(' · ')}</div>` : ''}`;
+  $('#panelBody').innerHTML = body;
+  $('#back').addEventListener('click', () => closeRegion(true));
+  $('#panelHead').querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { S.tab = b.dataset.tab; S.item = null; render(); }));
+  $('#panelBody').querySelectorAll('[data-item]').forEach(b => b.addEventListener('click', () => selectItem(b.dataset.item, b.dataset.cat, true)));
+  $('#panelBody').querySelectorAll('[data-fly]').forEach(b => b.addEventListener('click', () => { const m = markers[b.dataset.fly]; if (m && hasLeaflet) { map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 12), { animate: !reduced }); m.openPopup(); } }));
+}
+function placeDetail(p, v) {
+  const promos = v.promos.filter(m => m.placeId === p.id);
+  return `<p>${esc(p.description)}</p>${p.babymoon && p.babymoon.length ? `<div class="tags">${p.babymoon.map(t => `<span class="tag bm">${esc(t)}</span>`).join('')}</div>` : ''}${p.tags && p.tags.length ? `<div class="tags">${p.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div>` : ''}<div class="kv">${p.rating ? `<span>평점</span><span>★ ${p.rating.toFixed(1)} (Tripadvisor)</span>` : ''}${p.priceLevel ? `<span>가격대</span><span>${'₩'.repeat(p.priceLevel)}${p.priceFromKRW ? ' · 1박 ' + krw(p.priceFromKRW) + '~' : ''}</span>` : ''}</div>${promos.length ? `<div><div style="font-size:12px;color:var(--c-promo);font-weight:600;margin-bottom:4px">이 리조트의 프로모션</div>${promos.map(m => `<div style="font-size:12.5px;padding:4px 0;border-top:1px dashed var(--line)"><b>${esc(m.title)}</b> · ${esc(m.providerName)}${m.bookEnd ? ` · 예약 D-${daysUntil(m.bookEnd)}` : ''}<br>${esc(m.summary)} ${srcLink(m.url, '보기')}</div>`).join('')}</div>` : ''}<div class="actions"><button class="btn small" data-fly="${esc(p.id)}">지도에서 보기</button>${srcLink(p.url, '홈페이지')}</div>`;
+}
+function renderFilters() {
+  $('#from').value = S.from; $('#to').value = S.to;
+  const presets = [['이번 달', () => [TODAY_S, iso(new Date(TODAY.getFullYear(), TODAY.getMonth() + 1, 0))]], ['3개월', () => [TODAY_S, iso(addMonths(TODAY, 3))]], ['6개월', () => [TODAY_S, iso(addMonths(TODAY, 6))]], ['12개월', () => [TODAY_S, iso(addMonths(TODAY, 12))]], ['겨울 12~2월', () => { const y = TODAY.getMonth() >= 11 ? TODAY.getFullYear() : TODAY.getFullYear(); return [y + '-12-01', (y + 1) + '-02-28']; }], ['봄 3~5월', () => { const y = TODAY.getMonth() >= 5 ? TODAY.getFullYear() + 1 : TODAY.getFullYear(); return [y + '-03-01', y + '-05-31']; }]];
+  $('#presets').innerHTML = presets.map(([l], i) => `<button class="chip" data-preset="${i}">${l}</button>`).join('');
+  $('#presets').querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => { const [a, z] = presets[+b.dataset.preset][1](); S.from = a; S.to = z; update(); }));
+  $('#cats').innerHTML = CATS.map(c => `<button class="chip" role="switch" aria-pressed="${S.cats[c.key]}" data-cat="${c.key}" style="--c:${c.c}"><span class="dot"></span>${c.label}</button>`).join('');
+  $('#cats').querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => { S.cats[b.dataset.cat] = !S.cats[b.dataset.cat]; update(); }));
+  const cnt = {}; regions.forEach(r => cnt[r.country] = (cnt[r.country] || 0) + 1);
+  $('#countries').innerHTML = countries.map(c => `<button class="chip" role="switch" aria-pressed="${S.countries[c] !== false}" data-country="${esc(c)}">${flag(regions.find(r => r.country === c).countryCode)} ${esc(c)} <span class="n">${cnt[c]}</span></button>`).join('');
+  $('#countries').querySelectorAll('[data-country]').forEach(b => b.addEventListener('click', () => { S.countries[b.dataset.country] = S.countries[b.dataset.country] === false; update(); }));
+  $('#flight').value = S.maxFlight; $('#flightVal').textContent = S.maxFlight >= 12 ? '제한 없음' : S.maxFlight + '시간 이하'; $('#direct').checked = S.direct;
+  $('#zika').innerHTML = Object.keys(ZIKA).map(k => `<button class="chip" role="switch" aria-pressed="${S.zika[k] !== false}" data-zika="${k}"><span class="dot" style="--c:var(--${ZIKA[k][1] === 'neutral' ? 'muted' : ZIKA[k][1]})"></span>${ZIKA[k][0]}</button>`).join('');
+  $('#zika').querySelectorAll('[data-zika]').forEach(b => b.addEventListener('click', () => { S.zika[b.dataset.zika] = S.zika[b.dataset.zika] === false; update(); }));
+  $('#budget').innerHTML = [1, 2, 3, 4].map(b => `<button class="chip" role="switch" aria-pressed="${S.budget[b] !== false}" data-budget="${b}">${'●'.repeat(b)}${'○'.repeat(4 - b)} ${budgetLabel(b)}</button>`).join('');
+  $('#budget').querySelectorAll('[data-budget]').forEach(b => b.addEventListener('click', () => { S.budget[b.dataset.budget] = S.budget[b.dataset.budget] === false; update(); }));
+  $('#deadline').checked = S.deadline; $('#onlyPromo').checked = S.onlyPromo; $('#q').value = S.q;
+}
+function render() {
+  const vis = allVisible();
+  if (S.region && byRegion[S.region]) renderRegionPanel(vis.find(v => v.region.id === S.region)); else renderWorldPanel(vis);
+  renderMap();
+  const total = DATA.places.length + DATA.events.length + DATA.promotions.length;
+  $('#meta').innerHTML = `<span>데이터 기준 <b>${esc(DATA.meta.updatedAt)}</b></span><span>·</span><span>${regions.length}개 지역 · ${total}개 항목</span>`;
+  $('#legend').innerHTML = CATS.filter(c => c.key !== 'promo').map(c => `<span><i style="--c:${c.c}"></i>${c.label}</span>`).join('') + `<span><i style="--c:var(--c-promo);background:transparent;border:1.5px dashed var(--c-promo)"></i>프로모션 있음</span><span><i style="--c:var(--c-medical)"></i>의료</span>`;
+  $('#mapTl').innerHTML = S.region ? `<button class="btn" id="mapBack">← 전체 지도</button>` : '';
+  const mb = $('#mapBack'); if (mb) mb.addEventListener('click', () => closeRegion(true));
+  if (hot && hot.snapshot) hot.snapshot({ S });
+}
+function update() { if (S.from > S.to) { const t = S.from; S.from = S.to; S.to = t; } persist(); renderFilters(); render(); }
+
+/* ---------- 이벤트 ---------- */
+$('#from').addEventListener('change', e => { if (e.target.value) { S.from = e.target.value; update(); } });
+$('#to').addEventListener('change', e => { if (e.target.value) { S.to = e.target.value; update(); } });
+$('#flight').addEventListener('input', e => { S.maxFlight = +e.target.value; $('#flightVal').textContent = S.maxFlight >= 12 ? '제한 없음' : S.maxFlight + '시간 이하'; });
+$('#flight').addEventListener('change', () => update());
+$('#direct').addEventListener('change', e => { S.direct = e.target.checked; update(); });
+$('#deadline').addEventListener('change', e => { S.deadline = e.target.checked; update(); });
+$('#onlyPromo').addEventListener('change', e => { S.onlyPromo = e.target.checked; update(); });
+let qt; $('#q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(() => { S.q = e.target.value; persist(); render(); }, 180); });
+$('#resetAll').addEventListener('click', () => { const r = S.region; S = defaults(); S.region = r; update(); });
+$('#allCountries').addEventListener('click', () => { countries.forEach(c => S.countries[c] = true); update(); });
+const drawer = $('#filters'), backdrop = $('#backdrop'), tf = $('#toggleFilters');
+function setDrawer(open) { drawer.classList.toggle('open', open); backdrop.classList.toggle('show', open); tf.setAttribute('aria-expanded', open); }
+tf.addEventListener('click', () => setDrawer(!drawer.classList.contains('open'))); backdrop.addEventListener('click', () => setDrawer(false));
+$('#handle').addEventListener('click', () => { $('#panel').classList.toggle('tall'); if (hasLeaflet) setTimeout(() => map.invalidateSize(), 300); });
+window.addEventListener('resize', () => { if (hasLeaflet) map.invalidateSize(); });
+
+/* ---------- 시작 ---------- */
+function start(restored) {
+  if (restored && restored.S) Object.assign(S, restored.S);
+  renderFilters();
+  const h = (location.hash || '').slice(1);
+  if (byRegion[h]) { render(); openRegion(h); } else if (S.region && byRegion[S.region]) { render(); openRegion(S.region, true); } else { render(); fitWorld(); }
+}
+if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
+})();
+</script>

@@ -1,0 +1,20 @@
+{
+  "meta": { "updatedAt": "2026-09-25", "version": 1, "origin": "ICN", "note": "샘플 데이터. 워크플로우 결과로 대체 예정." },
+  "regions": [
+    { "id": "guam", "name": "괌", "nameEn": "Guam", "country": "미국령 괌", "countryCode": "GU", "lat": 13.47, "lng": 144.78, "zoom": 12, "flightHours": 4.3, "directFlight": true, "flightNote": "대한항공, 진에어, 제주항공, 티웨이 직항 약 4시간 20분", "timeDiffHours": 1, "visa": "괌-CNMI 비자면제(45일)", "zika": "low", "zikaNote": "질병관리청 기준 최근 발생 보고 없음", "bestMonths": [11,12,1,2,3,4,5], "rainyMonths": [7,8,9,10], "currency": "USD", "budgetLevel": 3, "medicalNote": "괌 메모리얼 병원(GMH) 산부인과", "summary": "짧은 비행과 리조트 중심 일정으로 태교여행 1순위. 우기(7~10월)에는 태풍 변수.", "tips": ["투몬 내 이동은 도보와 셔틀로 충분", "자외선이 강하니 오전·늦은 오후에 활동"], "sources": ["https://www.visitguam.com"] },
+    { "id": "hawaii", "name": "하와이(오아후)", "nameEn": "Oahu, Hawaii", "country": "미국", "countryCode": "US", "lat": 21.31, "lng": -157.86, "zoom": 11, "flightHours": 8.5, "directFlight": true, "flightNote": "대한항공, 아시아나, 하와이안항공 직항", "timeDiffHours": -19, "visa": "ESTA", "zika": "none", "zikaNote": "발생 보고 없음", "bestMonths": [4,5,6,9,10,11], "rainyMonths": [12,1,2], "currency": "USD", "budgetLevel": 4, "medicalNote": "퀸즈 메디컬 센터", "summary": "장거리이지만 의료 인프라와 쾌적한 기후.", "tips": ["시차 적응에 이틀 여유"], "sources": [] }
+  ],
+  "places": [
+    { "id": "guam-p-01", "regionId": "guam", "type": "resort", "name": "하얏트 리젠시 괌", "nameEn": "Hyatt Regency Guam", "area": "투몬", "lat": 13.5123, "lng": 144.8044, "priceLevel": 3, "priceFromKRW": 310000, "rating": 4.0, "tags": ["오션뷰", "수영장", "스파"], "babymoon": ["룸서비스", "해변 산책로"], "description": "투몬 비치 중심의 대형 리조트.", "url": "https://www.hyatt.com", "confidence": "high", "addedAt": "2026-09-20" },
+    { "id": "guam-p-02", "regionId": "guam", "type": "attraction", "name": "사랑의 절벽", "nameEn": "Two Lovers Point", "area": "투몬 북쪽", "lat": 13.5389, "lng": 144.8053, "priceLevel": 1, "tags": ["전망"], "babymoon": ["평지 산책"], "description": "투몬만이 내려다보이는 전망대.", "url": "https://www.visitguam.com", "confidence": "high" },
+    { "id": "guam-p-03", "regionId": "guam", "type": "medical", "name": "괌 메모리얼 병원", "nameEn": "Guam Memorial Hospital", "area": "타무닝", "lat": 13.4939, "lng": 144.7844, "tags": [], "babymoon": [], "description": "공공 종합병원, 산부인과 있음.", "url": "https://www.gmha.org", "confidence": "high" },
+    { "id": "hawaii-p-01", "regionId": "hawaii", "type": "resort", "name": "할레쿨라니", "nameEn": "Halekulani", "area": "와이키키", "lat": 21.2772, "lng": -157.8322, "priceLevel": 4, "rating": 4.7, "tags": ["오션뷰"], "babymoon": ["조용한 분위기"], "description": "와이키키의 대표 럭셔리 호텔.", "url": "https://www.halekulani.com", "confidence": "high" }
+  ],
+  "events": [
+    { "id": "guam-e-01", "regionId": "guam", "name": "괌 마이크로네시아 아일랜드 페어", "nameEn": "Guam Micronesia Island Fair", "type": "festival", "start": "2026-11-06", "end": "2026-11-08", "lat": 13.4762, "lng": 144.7507, "venue": "파세오 공원", "description": "미크로네시아 문화 축제.", "url": "https://www.visitguam.com", "confidence": "low" }
+  ],
+  "promotions": [
+    { "id": "guam-m-01", "regionId": "guam", "placeId": "guam-p-01", "title": "베이비문 패키지", "provider": "hotel", "providerName": "하얏트 리젠시 괌", "bookEnd": "2026-10-05", "travelStart": "2026-10-01", "travelEnd": "2026-12-20", "summary": "오션뷰 객실 + 조식 2인 + 임산부 마사지 60분.", "conditions": "2박 이상", "priceKRW": 620000, "url": "https://www.hyatt.com", "confidence": "medium" },
+    { "id": "guam-m-02", "regionId": "guam", "title": "괌 왕복 특가", "provider": "airline", "providerName": "진에어", "bookEnd": "2026-11-30", "travelStart": "2026-11-01", "travelEnd": "2027-02-28", "summary": "인천-괌 왕복 특가.", "url": "https://www.jinair.com", "confidence": "medium" }
+  ]
+}
