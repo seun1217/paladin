@@ -1,0 +1,10 @@
+{
+  "categories": [
+    { "id": "appliances", "name": "가전디지털", "coupangCategoryId": 1016, "subcategories": [
+      { "id": "appliances.laptop", "name": "노트북", "keywords": ["노트북", "랩탑", "맥북", "그램", "갤럭시북"], "excludeKeywords": ["가방", "파우치", "거치대", "받침대"] },
+      { "id": "appliances.earphone", "name": "이어폰/헤드폰", "keywords": ["이어폰", "헤드폰", "에어팟", "버즈", "헤드셋"] },
+      { "id": "appliances.tv", "name": "TV", "keywords": ["tv", "티비", "텔레비전"] },
+      { "id": "appliances.etc", "name": "기타", "keywords": [] }
+    ] }
+  ]
+}
