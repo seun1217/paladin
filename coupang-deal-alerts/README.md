@@ -69,7 +69,8 @@ npm run dev            # http://localhost:8787
 * iPhone/iPad: Safari 공유 → **홈 화면에 추가** 후 홈 화면 앱에서 알림 켜기(iOS 16.4+).
 
 ### 텔레그램(선택)
-* @BotFather 로 봇을 만들고 `TELEGRAM_BOT_TOKEN` 설정. 앱에서 **텔레그램으로 받기**를 누르면 `t.me/<bot>?start=<코드>` 링크가 생성되고, 봇에서 시작을 누르면 연결됩니다.
+* @BotFather 로 봇을 만들고 `TELEGRAM_BOT_TOKEN` 설정. 앱에서 **텔레그램으로 받기**를 누르면 `t.me/<bot>?start=<코드>` 링크가 생성되고(15분 유효), 봇에서 시작을 누르면 연결됩니다.
+* 봇에 `/stop` 을 보내면 해당 채팅의 연결이 해제됩니다.
 
 ## 환경 변수
 
@@ -90,6 +91,8 @@ npm run dev            # http://localhost:8787
 | `ADMIN_TOKEN` | | `POST /api/admin/sweep` (헤더 `x-admin-token`) 즉시 수집 |
 | `TZ_NAME` | `Asia/Seoul` | 일일 한도·방해금지 계산 기준 시간대 |
 | `TAXONOMY_PATH` | 내장 | 외부 세부 카테고리 JSON |
+| `TRUST_PROXY` | `false` | 리버스 프록시 뒤에서 `X-Forwarded-For` 를 신뢰(레이트 제한 IP 판별용) |
+| `PUSH_ENDPOINT_HOSTS` | | 허용할 푸시 서비스 호스트 접미사 추가(쉼표 구분). 기본으로 FCM, Mozilla, WNS, Apple, Huawei 허용 |
 
 ## API
 
@@ -107,7 +110,9 @@ npm run dev            # http://localhost:8787
 | GET | `/api/status` | 스케줄러/수집 상태 |
 | GET | `/go/:dealId` | 쿠팡 상품 페이지로 리다이렉트 |
 
-사용자 식별은 로그인 없이 브라우저가 생성한 익명 ID(localStorage)로 합니다. 기기마다 별도 사용자로 취급되며, 한 사용자에 여러 푸시 구독(기기)을 붙일 수 있습니다.
+사용자 식별은 로그인 없이 브라우저가 생성한 익명 ID(localStorage)로 합니다. 이 ID는 사실상 비밀번호 역할(bearer capability)을 하므로 접근 로그에서는 마스킹되며, 한 사용자에 최대 10개 기기(푸시 구독)를 붙일 수 있습니다.
+
+**보호 장치**: 쓰기 요청은 IP당 분당 120회, 테스트 알림·텔레그램 코드 발급은 사용자당 분당 3회로 제한됩니다. 푸시 엔드포인트는 알려진 푸시 서비스 도메인(HTTPS)만 허용해 서버가 내부망으로 요청을 보내는 일(SSRF)을 막습니다. `/api/status` 의 오류 원문과 사용자 수는 `x-admin-token` 이 있을 때만 노출됩니다.
 
 ## 개발
 
