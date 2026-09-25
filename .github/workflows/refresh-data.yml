@@ -1,0 +1,73 @@
+name: Refresh tourism data
+
+# 매일 KST 04:10 (UTC 19:10 전날) 에 한국관광공사 TourAPI 에서 행사·관광지 데이터를 받아 data/ 에 커밋한다.
+# 필요한 설정: 저장소 Settings > Secrets and variables > Actions > New repository secret
+#   TOURAPI_KEY : data.go.kr "한국관광공사_국문 관광정보 서비스_GW" 활용신청 후 발급된 서비스 키 (디코딩 키)
+on:
+  schedule:
+    - cron: '10 19 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_spots:
+        description: '관광지 수집 생략 (행사만 갱신)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check secret
+        id: check
+        env:
+          TOURAPI_KEY: ${{ secrets.TOURAPI_KEY }}
+        run: |
+          if [ -z "$TOURAPI_KEY" ]; then
+            echo "::warning::TOURAPI_KEY secret 이 없어 갱신을 건너뜁니다. README 의 설정 안내를 참고하세요."
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fetch from TourAPI
+        if: steps.check.outputs.has_key == 'true'
+        env:
+          TOURAPI_KEY: ${{ secrets.TOURAPI_KEY }}
+          TOURAPI_BASE_URL: ${{ vars.TOURAPI_BASE_URL }}
+          SPOTS_PER_AREA: ${{ vars.SPOTS_PER_AREA }}
+          CULTURE_PER_AREA: ${{ vars.CULTURE_PER_AREA }}
+          LEISURE_PER_AREA: ${{ vars.LEISURE_PER_AREA }}
+          SKIP_SPOTS: ${{ inputs.skip_spots && '1' || '' }}
+        run: node scripts/fetch-tourapi.mjs
+
+      - name: Validate
+        if: steps.check.outputs.has_key == 'true'
+        run: npm test
+
+      - name: Commit and push
+        if: steps.check.outputs.has_key == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "변경 없음"
+            exit 0
+          fi
+          git commit -m "data: refresh tourism data $(date -u +'%Y-%m-%d %H:%M UTC')"
+          git push

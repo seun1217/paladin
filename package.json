@@ -1,0 +1,22 @@
+{
+  "name": "korea-tourism-map",
+  "version": "1.0.0",
+  "description": "전국 주요 관광지·축제·행사를 기간/지역/유형별로 필터링해 보는 인터랙티브 맵 (한국관광공사 TourAPI 연동, 자동 갱신)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "fetch-data": "node scripts/fetch-tourapi.mjs",
+    "build:single": "node scripts/build-single.mjs",
+    "vendor": "node scripts/vendor.mjs",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "leaflet": "1.9.4",
+    "leaflet.markercluster": "1.5.3"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

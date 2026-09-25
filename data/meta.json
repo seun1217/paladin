@@ -1,0 +1,7 @@
+{
+  "updatedAt": null,
+  "checkedAt": null,
+  "source": "seed-only",
+  "counts": { "spots": 0, "events": 0 },
+  "note": "TourAPI 동기화가 아직 실행되지 않았습니다. GitHub Secrets 에 TOURAPI_KEY 를 등록하면 워크플로가 매일 갱신합니다."
+}
