@@ -25,6 +25,7 @@ const data = {
   spots: JSON.parse(read('data/spots.json')),
   events: JSON.parse(read('data/events.json')),
   meta: JSON.parse(read('data/meta.json')),
+  geo: JSON.parse(read('data/geo/korea-provinces.json')),
 };
 const dataScript = `window.__KTM_INLINE_DATA__ = ${JSON.stringify(data).replace(/<\/script/gi, '<\\/script')};`;
 
@@ -39,6 +40,15 @@ html = html
   .replace('<script type="module" src="js/app.js"></script>', `<script>\n${dataScript}\n</script>\n<script type="module">\n${bundled}\n</script>`);
 
 mkdirSync(resolve(root, 'dist'), { recursive: true });
-const out = resolve(root, 'dist/korea-tourism-map.html');
+const artifact = process.argv.includes('--artifact');
+let out = resolve(root, 'dist/korea-tourism-map.html');
+if (artifact) {
+  // 문서 골격(doctype/html/head/body)을 제공하는 호스트에 넣기 위한 본문 전용 변형: <title> 과 <style> 을 맨 앞에 둔다.
+  const title = /<title>[\s\S]*?<\/title>/.exec(html)[0];
+  const style = /<style>[\s\S]*?<\/style>/.exec(html)[0];
+  const body = /<body>([\s\S]*)<\/body>/.exec(html)[1];
+  html = `${title}\n${style}\n${body}`;
+  out = resolve(root, 'dist/korea-tourism-map.artifact.html');
+}
 writeFileSync(out, html);
 console.log(`built ${out} (${(Buffer.byteLength(html) / 1024).toFixed(0)} KB)`);

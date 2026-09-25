@@ -5,7 +5,7 @@ import {
   todayKST, defaultFilters, applyFilters, matchesFilters, sortItems, SORTS, PERIOD_PRESETS, presetRange, detectPreset,
   monthlyEventCounts, nextMonths, filtersToQuery, filtersFromQuery, isValidYmd, eventStatusOf,
 } from './model.js';
-import { loadDataset, fetchLiveEventsFromBrowser, assemble, watchForUpdates } from './data.js';
+import { loadDataset, fetchLiveEventsFromBrowser, assemble, watchForUpdates, loadGeo } from './data.js';
 import { fetchDetail } from './tourapi.js';
 import { createMap } from './map.js';
 import { renderChips, renderListItem, renderPopup, toast, formatDateTime, h } from './ui.js';
@@ -75,7 +75,11 @@ mapApi = createMap($('map'), {
   onSelect: (item) => setActive(item.id, 'map'),
   onMoveEnd: () => { if (state.boundsOnly) scheduleListRender(); },
   onBasemapChange: () => { userPickedBasemap = true; },
+  onVectorModeChange: (on) => {
+    if (on) toast('지도 타일을 불러올 수 없어 시·도 경계 지도로 표시합니다. 네트워크가 연결되면 자동으로 전환됩니다.', { timeout: 6000 });
+  },
 });
+loadGeo().then((geo) => { if (geo) mapApi.setVectorBasemap(geo); });
 
 // ---------- 즐겨찾기 ----------
 function toggleFavorite(item) {
@@ -149,6 +153,7 @@ function buildStaticControls() {
     $('near-status').textContent = '';
     render();
   });
+  if (window.__KTM_INLINE_DATA__) $('btn-share').hidden = true;
   $('btn-share').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(location.href); toast('현재 필터가 담긴 링크를 복사했습니다.', { type: 'ok', timeout: 2500 }); }
     catch { toast('클립보드 복사에 실패했습니다. 주소창의 링크를 직접 복사하세요.', { type: 'err' }); }
@@ -170,10 +175,24 @@ function buildStaticControls() {
   $('settings-close').addEventListener('click', () => $('settings-dialog').close());
   $('settings-form').addEventListener('submit', (e) => { e.preventDefault(); saveSettings(); $('settings-dialog').close(); });
   $('btn-fetch-now').addEventListener('click', fetchNowFromBrowser);
-  $('btn-clear-storage').addEventListener('click', () => {
-    if (!confirm('저장된 설정과 즐겨찾기를 모두 삭제할까요?')) return;
-    for (const k of Object.values(LS)) localStorage.removeItem(k);
-    location.hash = ''; location.reload();
+  let clearArmed = null;
+  $('btn-clear-storage').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    if (!clearArmed) {
+      btn.textContent = '다시 누르면 삭제됩니다';
+      btn.classList.add('danger');
+      clearArmed = setTimeout(() => { clearArmed = null; btn.textContent = '저장된 설정·즐겨찾기 삭제'; btn.classList.remove('danger'); }, 4000);
+      return;
+    }
+    clearTimeout(clearArmed);
+    try { for (const k of Object.values(LS)) localStorage.removeItem(k); } catch { /* 무시 */ }
+    state.favorites = new Set();
+    state.settings = { apiKey: '', baseUrl: '', directFetch: false, pollMin: 30 };
+    state.filters = defaultFilters(state.today);
+    $('search-input').value = '';
+    $('settings-dialog').close();
+    render();
+    toast('저장된 설정과 즐겨찾기를 삭제했습니다.', { type: 'ok', timeout: 2500 });
   });
 
   window.addEventListener('hashchange', () => {
@@ -303,7 +322,7 @@ let filtered = [];
 function render() {
   const ctx = { today: state.today, favorites: state.favorites };
   filtered = applyFilters(state.items, state.filters, ctx);
-  history.replaceState(null, '', `#${filtersToQuery(state.filters, state.today)}`);
+  try { history.replaceState(null, '', `#${filtersToQuery(state.filters, state.today)}`); } catch { /* 샌드박스 환경에서는 URL 갱신 생략 */ }
   renderFilterControls();
   mapApi.setItems(filtered, ctx);
   state.listLimit = 120;

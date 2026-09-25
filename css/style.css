@@ -14,6 +14,10 @@
   --chip-on-bg: #0f766e;
   --chip-on-text: #ffffff;
   --shadow: 0 8px 24px rgba(16, 32, 40, 0.14);
+  --geo-sea: #d6e6ef;
+  --geo-land: #f3f4ee;
+  --geo-border: #a9b8bf;
+  --geo-label: #4d5f68;
   --radius: 12px;
   --sidebar-w: 400px;
   --topbar-h: 58px;
@@ -34,6 +38,10 @@
   --chip-on-bg: #2dd4bf;
   --chip-on-text: #0b1b1a;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --geo-sea: #0c1519;
+  --geo-land: #1c262c;
+  --geo-border: #3d4f58;
+  --geo-label: #9fb0b8;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -51,6 +59,10 @@
   --chip-on-bg: #2dd4bf;
   --chip-on-text: #0b1b1a;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --geo-sea: #0c1519;
+  --geo-land: #1c262c;
+  --geo-border: #3d4f58;
+  --geo-label: #9fb0b8;
   color-scheme: dark;
 }
 }
@@ -222,6 +234,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 /* ---------- 지도 ---------- */
 .map-wrap { position: relative; min-width: 0; }
 #map { position: absolute; inset: 0; background: var(--surface-2); }
+#map.vector-mode { background: var(--geo-sea); }
+.region-label { font-size: 11px; font-weight: 600; color: var(--geo-label); text-align: center; text-shadow: 0 0 3px var(--geo-land); pointer-events: none; }
 .map-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,0.6); z-index: 500; font-weight: 600; pointer-events: none; }
 :root[data-theme="dark"] .map-loading { background: rgba(0,0,0,0.5); }
 .map-loading[hidden] { display: none; }
@@ -292,6 +306,7 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .btn.primary:hover { background: var(--brand-strong); color: #fff; }
 .btn.ghost { border-color: transparent; color: var(--text-muted); }
+.btn.danger { border-color: #e53935; color: #e53935; }
 .dialog-foot { display: flex; justify-content: space-between; gap: 8px; }
 .meta-list { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; margin: 0; font-size: 12px; }
 .meta-list dt { color: var(--text-muted); }

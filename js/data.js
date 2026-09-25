@@ -11,6 +11,7 @@ const FILES = {
   spots: 'data/spots.json',
   events: 'data/events.json',
   meta: 'data/meta.json',
+  geo: 'data/geo/korea-provinces.json',
 };
 
 export async function loadJson(path, { bust = true } = {}) {
@@ -91,6 +92,13 @@ export async function loadDataset({ settings, today }) {
 
   const items = assemble(raw, today);
   return { items, raw, sources, warnings };
+}
+
+// 시·도 경계 GeoJSON (타일을 못 불러올 때의 벡터 폴백 지도). 실패하면 null.
+export async function loadGeo() {
+  const inline = inlineData();
+  if (inline) return inline.geo || null;
+  try { return await loadJson(FILES.geo, { bust: false }); } catch { return null; }
 }
 
 // data/meta.json 을 주기적으로 확인해 updatedAt 이 바뀌면 콜백을 호출한다 (지속적 갱신 감시).

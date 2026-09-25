@@ -35,6 +35,7 @@ Node 20 이상이 필요합니다. 앱 자체는 정적 파일(`index.html`, `cs
 | 라이브 관광지 | `data/spots.json` | TourAPI `areaBasedList2` 로 수집한 시·도별 관광지·문화시설·레포츠 (대표이미지 있는 항목, 수정일순) |
 | 라이브 행사 | `data/events.json` | TourAPI `searchFestival2` 로 수집한 최근 종료·진행 중·예정 행사 전체 (공식 일정) |
 | 메타 | `data/meta.json` | 갱신 시각, 건수. 앱이 이 파일을 주기적으로 확인해 새 데이터를 감지 |
+| 시·도 경계 | `data/geo/korea-provinces.json` | 지도 타일을 불러올 수 없을 때(오프라인, 이미지 차단 환경) 자동으로 표시되는 벡터 폴백 지도. 통계청 SGIS 2018 경계(공공누리 1유형), `scripts/prepare-geo.mjs` 로 생성 |
 
 병합 규칙: 시드 관광지가 TourAPI 항목과 같은 장소로 판단되면(제목 유사 + 3km 이내) TourAPI 의 좌표·이미지·주소·연락처를 쓰고 시드의 분류·태그·"주요" 표시는 유지합니다. 시드 행사는 TourAPI 에 같은 행사의 공식 일정이 있으면 숨겨지고 공식 항목이 "주요" 로 표시됩니다.
 따라서 TourAPI 연동 전에도 앱은 동작하지만, 시드 행사의 날짜는 추정치이므로 **방문 전 공식 일정 확인이 필요**합니다.
@@ -129,3 +130,4 @@ test/                 node --test 단위 테스트
 ## 라이선스
 
 MIT. Leaflet(BSD-2), Leaflet.markercluster(MIT) 라이선스 파일은 `vendor/` 에 포함되어 있습니다. 관광 데이터의 저작권은 한국관광공사 및 각 제공 기관에 있습니다.
+시·도 경계 데이터는 통계청 통계지리정보서비스(SGIS)가 공공누리 제1유형으로 제공한 자료를 [southkorea/southkorea-maps](https://github.com/southkorea/southkorea-maps) 배포본에서 가져와 변환한 것입니다.

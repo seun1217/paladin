@@ -66,7 +66,15 @@ class Legend extends L.Control {
   }
 }
 
-export function createMap(el, { theme = 'light', renderPopup, onSelect, onMoveEnd, onBasemapChange } = {}) {
+// 벡터 폴백 지도의 시·도 라벨 위치
+const REGION_LABELS = [
+  ['서울', 37.55, 126.99], ['인천', 37.45, 126.55], ['경기', 37.35, 127.35], ['강원', 37.75, 128.35],
+  ['충북', 36.75, 127.85], ['충남', 36.45, 126.75], ['대전', 36.33, 127.40], ['세종', 36.55, 127.25],
+  ['경북', 36.35, 128.85], ['대구', 35.85, 128.60], ['울산', 35.55, 129.25], ['부산', 35.15, 129.05],
+  ['경남', 35.35, 128.15], ['전북', 35.75, 127.10], ['광주', 35.16, 126.85], ['전남', 34.85, 126.85], ['제주', 33.40, 126.55],
+];
+
+export function createMap(el, { theme = 'light', renderPopup, onSelect, onMoveEnd, onBasemapChange, onVectorModeChange } = {}) {
   const map = L.map(el, {
     center: KOREA_CENTER,
     zoom: 7,
@@ -98,6 +106,49 @@ export function createMap(el, { theme = 'light', renderPopup, onSelect, onMoveEn
   });
 
   new Legend({ position: 'bottomleft' }).addTo(map);
+
+  // ---- 벡터 폴백 지도: 타일을 불러올 수 없을 때(오프라인, 이미지 차단 환경) 시·도 경계를 그린다.
+  let vectorLayer = null;
+  let labelLayer = null;
+  let vectorMode = false;
+  let tilesLoaded = 0;
+  let tileErrors = 0;
+  let offlineTimer = null;
+  const vectorStyle = () => ({ color: 'var(--geo-border)', weight: 1, fillColor: 'var(--geo-land)', fillOpacity: 1, opacity: 1 });
+
+  function setVectorBasemap(geojson) {
+    if (vectorLayer) map.removeLayer(vectorLayer);
+    vectorLayer = L.geoJSON(geojson, { style: vectorStyle, interactive: false, pane: 'tilePane', className: 'vector-basemap' });
+    if (vectorMode) vectorLayer.addTo(map);
+  }
+
+  function setVectorMode(on) {
+    if (on === vectorMode) return;
+    vectorMode = on;
+    el.classList.toggle('vector-mode', on);
+    if (on) {
+      if (vectorLayer) vectorLayer.addTo(map);
+      if (!labelLayer) {
+        labelLayer = L.layerGroup(REGION_LABELS.map(([name, lat, lng]) => L.marker([lat, lng], {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({ className: 'region-label', html: name, iconSize: [60, 16], iconAnchor: [30, 8] }),
+        })));
+      }
+      labelLayer.addTo(map);
+    } else {
+      if (vectorLayer) map.removeLayer(vectorLayer);
+      if (labelLayer) map.removeLayer(labelLayer);
+    }
+    if (onVectorModeChange) onVectorModeChange(on);
+  }
+
+  function watchTiles(layer) {
+    layer.on('tileload', () => { tilesLoaded += 1; clearTimeout(offlineTimer); if (vectorMode) setVectorMode(false); });
+    layer.on('tileerror', () => { tileErrors += 1; if (tilesLoaded === 0 && tileErrors >= 2) setVectorMode(true); });
+  }
+  for (const layer of Object.values(layers)) watchTiles(layer);
+  // 아무 타일도 8초 안에 오지 않으면 오프라인으로 간주한다.
+  offlineTimer = setTimeout(() => { if (tilesLoaded === 0) setVectorMode(true); }, 8000);
 
   const cluster = L.markerClusterGroup({
     chunkedLoading: true,
@@ -199,6 +250,8 @@ export function createMap(el, { theme = 'light', renderPopup, onSelect, onMoveEn
     focus,
     setActive,
     setBasemap,
+    setVectorBasemap,
+    get vectorMode() { return vectorMode; },
     fitTo,
     anyInView,
     getBounds: () => map.getBounds(),

@@ -41,3 +41,15 @@ test('시드 행사 데이터 무결성', () => {
   const months = new Set(events.map((e) => e.typicalStart.slice(0, 2)));
   assert.equal(months.size, 12);
 });
+
+test('시·도 경계 GeoJSON 은 17개 시·도를 모두 포함한다', () => {
+  const geo = JSON.parse(readFileSync(new URL('../data/geo/korea-provinces.json', import.meta.url), 'utf8'));
+  assert.equal(geo.type, 'FeatureCollection');
+  assert.equal(geo.features.length, 17);
+  const codes = new Set(geo.features.map((f) => f.properties.areaCode));
+  for (const r of REGIONS) assert.ok(codes.has(r.code), `${r.name} 경계 누락`);
+  for (const f of geo.features) {
+    const coords = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
+    for (const poly of coords) for (const ring of poly) for (const [lng, lat] of ring) assert.ok(isInKorea(lat, lng), `${f.properties.name} 좌표 범위 밖 ${lat},${lng}`);
+  }
+});
