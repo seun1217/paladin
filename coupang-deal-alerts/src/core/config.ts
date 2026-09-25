@@ -31,6 +31,10 @@ export interface AppConfig {
   baseUrl: string;
   /** timezone used for daily caps and quiet hours */
   timeZone: string;
+  /** honour X-Forwarded-For from a reverse proxy */
+  trustProxy: boolean;
+  /** extra push-service host suffixes to allow */
+  pushEndpointHosts: string[];
 }
 
 function envInt(name: string, def: number): number {
@@ -90,8 +94,8 @@ export function loadConfig(root = process.cwd()): AppConfig {
       subId: process.env.COUPANG_SUB_ID ?? '',
       limit: Math.min(100, Math.max(1, envInt('COUPANG_LIMIT', 100))),
     },
-    pollIntervalMin: envInt('POLL_INTERVAL_MIN', 60),
-    minRequestSpacingMs: envInt('MIN_REQUEST_SPACING_MS', 1500),
+    pollIntervalMin: Math.max(1, envInt('POLL_INTERVAL_MIN', 60)),
+    minRequestSpacingMs: Math.max(0, envInt('MIN_REQUEST_SPACING_MS', 1500)),
     schedulerEnabled: envBool('SCHEDULER_ENABLED', true),
     vapid: {
       publicKey: process.env.VAPID_PUBLIC_KEY ?? '',
@@ -102,5 +106,7 @@ export function loadConfig(root = process.cwd()): AppConfig {
     adminToken: process.env.ADMIN_TOKEN ?? '',
     baseUrl: (process.env.BASE_URL ?? `http://localhost:${port}`).replace(/\/$/, ''),
     timeZone: process.env.TZ_NAME ?? 'Asia/Seoul',
+    trustProxy: envBool('TRUST_PROXY', false),
+    pushEndpointHosts: (process.env.PUSH_ENDPOINT_HOSTS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   };
 }

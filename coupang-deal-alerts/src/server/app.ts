@@ -8,6 +8,8 @@ import type { Scheduler } from '../core/scheduler.js';
 import { DEFAULT_SEVERITY_THRESHOLDS, type Dispatcher } from '../notify/dispatcher.js';
 import type { Notifier, Sensitivity, UserPrefs } from '../core/types.js';
 import type { TelegramNotifier } from '../notify/telegram.js';
+import { isAllowedPushEndpoint } from '../notify/webpush.js';
+import { RateLimiter } from './rate-limit.js';
 
 export interface AppDeps {
   repos: Repos;
@@ -23,6 +25,12 @@ export interface AppDeps {
   baseUrl: string;
   now?: () => number;
   logger?: boolean;
+  /** honour X-Forwarded-For (only behind a trusted reverse proxy). Default false */
+  trustProxy?: boolean;
+  /** extra push-service host suffixes allowed for subscription endpoints */
+  pushEndpointHosts?: string[];
+  /** max push subscriptions (devices) per user. Default 10 */
+  maxPushPerUser?: number;
 }
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
@@ -66,10 +74,49 @@ function defaultPrefs(userId: string, now: number): UserPrefs {
   return { userId, subcategoryIds: [], sensitivity: 'normal', dailyCap: 10, quietHours: { startHour: 23, endHour: 8 }, createdAt: now, updatedAt: now };
 }
 
+/** User ids are bearer capabilities; keep them out of access logs. */
+export function redactUserId(url: string): string {
+  return url.replace(/(\/api\/users\/)[^/?]+/g, '$1***');
+}
+
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const now = deps.now ?? (() => Date.now());
-  const app = Fastify({ logger: deps.logger ?? false, bodyLimit: 64 * 1024, trustProxy: true });
+  const app = Fastify({
+    logger: deps.logger
+      ? { serializers: { req: (req) => ({ method: req.method, url: redactUserId(req.url), remoteAddress: req.ip }) } }
+      : false,
+    bodyLimit: 64 * 1024,
+    trustProxy: deps.trustProxy ?? false,
+  });
   const { repos, classifier } = deps;
+  const maxPushPerUser = deps.maxPushPerUser ?? 10;
+
+  // Fastify rejects an empty body on JSON requests; browsers send `content-type: application/json` on body-less
+  // fetches easily, so treat an empty body as "no body" instead of a 400.
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = String(body).trim();
+    if (text === '') return done(null, undefined);
+    try { done(null, JSON.parse(text)); } catch (e) { (e as Error & { statusCode?: number }).statusCode = 400; done(e as Error, undefined); }
+  });
+
+  // Anonymous write routes: per-IP and per-user throttles (in-memory; sufficient for a single-instance app).
+  const ipLimiter = new RateLimiter({ windowMs: 60_000, max: 120, now });
+  const userActionLimiter = new RateLimiter({ windowMs: 60_000, max: 3, now });
+  app.addHook('onRequest', async (req, reply) => {
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return;
+    if (!ipLimiter.take(`ip:${req.ip}`)) return reply.code(429).send({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' });
+  });
+  /** First contact through a channel (push/telegram) must create the user with the SAME defaults the UI shows. */
+  const ensureUserWithDefaults = (userId: string, t: number) => {
+    if (repos.getUserPrefs(userId)) return;
+    const d = defaultPrefs(userId, t);
+    repos.saveUserPrefs({ userId: d.userId, subcategoryIds: d.subcategoryIds, sensitivity: d.sensitivity, dailyCap: d.dailyCap, quietHours: d.quietHours }, t);
+  };
+  const throttleUser = (kind: string, userId: string, reply: import('fastify').FastifyReply) => {
+    if (!userActionLimiter.take(`${kind}:${userId}`)) { void reply.code(429).send({ error: '잠시 후 다시 시도해 주세요.' }); return false; }
+    return true;
+  };
 
   await app.register(fastifyStatic, {
     root: deps.publicDir,
@@ -107,18 +154,26 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     disclosure: '이 서비스는 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받을 수 있습니다.',
   }));
 
-  app.get('/api/status', async () => {
+  app.get('/api/status', async (req) => {
     const dayAgo = now() - 24 * 3600_000;
+    const admin = Boolean(deps.adminToken) && req.headers['x-admin-token'] === deps.adminToken;
+    const st = deps.scheduler ? deps.scheduler.status : null;
+    const polls = repos.lastPollRuns();
     return {
       providerMode: deps.providerMode,
-      scheduler: deps.scheduler ? deps.scheduler.status : null,
-      lastPolls: repos.lastPollRuns(),
+      scheduler: st ? {
+        running: st.running, sweeping: st.sweeping, lastSweepAt: st.lastSweepAt, nextSweepAt: st.nextSweepAt, intervalMs: st.intervalMs,
+        paused: st.pausedUntil !== null, pausedUntil: st.pausedUntil,
+        ...(admin ? { pauseReason: st.pauseReason, lastResult: st.lastResult, provider: st.provider } : {}),
+      } : null,
+      // raw provider error strings and audience sizes are operator-only
+      lastPolls: polls.map((p) => ({ coupangCategoryId: p.coupangCategoryId, startedAt: p.startedAt, finishedAt: p.finishedAt, ok: p.ok,
+        productCount: p.productCount, dealCount: p.dealCount, ...(admin ? { error: p.error } : { error: p.ok === false ? 'error' : null }) })),
       counts: {
         products: repos.countProducts(),
         observations: repos.countObservations(),
-        users: repos.countUsers(),
-        pushSubscriptions: repos.countPushSubscriptions(),
         dealsLast24h: repos.countDealsSince(dayAgo),
+        ...(admin ? { users: repos.countUsers(), pushSubscriptions: repos.countPushSubscriptions() } : {}),
       },
     };
   });
@@ -159,7 +214,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const t = now();
     const existing = repos.getUserPrefs(req.params.userId) ?? defaultPrefs(req.params.userId, t);
     const body = req.body ?? {};
-    const subcategoryIds = (body.subcategoryIds ?? existing.subcategoryIds).filter((id) => classifier.hasSubcategory(id));
+    const subcategoryIds = [...new Set((body.subcategoryIds ?? existing.subcategoryIds).filter((id) => classifier.hasSubcategory(id)))];
     const unknown = (body.subcategoryIds ?? []).filter((id) => !classifier.hasSubcategory(id));
     const sensitivity = body.sensitivity && isSensitivity(body.sensitivity) ? body.sensitivity : existing.sensitivity;
     const dailyCap = body.dailyCap ?? existing.dailyCap;
@@ -172,15 +227,23 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post<{ Params: { userId: string }; Body: PushBodyT }>('/api/users/:userId/push', { schema: { params: userParams, body: pushBody } }, async (req, reply) => {
     const t = now();
     const { subscription, oldEndpoint } = req.body;
-    repos.ensureUser(req.params.userId, t);
-    if (!repos.getUserPrefs(req.params.userId)?.updatedAt) {
-      // brand new user via push first: persist defaults so quiet hours etc. exist
-      const d = defaultPrefs(req.params.userId, t);
-      repos.saveUserPrefs({ userId: d.userId, subcategoryIds: d.subcategoryIds, sensitivity: d.sensitivity, dailyCap: d.dailyCap, quietHours: d.quietHours }, t);
+    const userId = req.params.userId;
+    if (!isAllowedPushEndpoint(subscription.endpoint, deps.pushEndpointHosts ?? [])) {
+      return reply.code(400).send({ error: '지원하지 않는 푸시 서비스 주소입니다.', code: 'endpoint_not_allowed' });
     }
-    if (oldEndpoint && oldEndpoint !== subscription.endpoint) repos.deletePushSubscription(oldEndpoint);
-    repos.upsertPushSubscription({ userId: req.params.userId, endpoint: subscription.endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, createdAt: t });
-    return reply.code(201).send({ ok: true, count: repos.listPushSubscriptions(req.params.userId).length });
+    const existing = repos.getPushSubscription(subscription.endpoint);
+    if (existing && existing.userId !== userId) {
+      // an endpoint belongs to whoever registered it first; the browser can always create a fresh one
+      return reply.code(409).send({ error: '이 구독은 다른 사용자에 연결되어 있습니다. 다시 구독해 주세요.', code: 'endpoint_owned_by_other_user' });
+    }
+    const mine = repos.listPushSubscriptions(userId);
+    if (!existing && mine.length >= maxPushPerUser && !(oldEndpoint && mine.some((m) => m.endpoint === oldEndpoint))) {
+      return reply.code(409).send({ error: `사용자당 최대 ${maxPushPerUser}개 기기까지 등록할 수 있습니다.`, code: 'too_many_devices' });
+    }
+    ensureUserWithDefaults(userId, t);
+    if (oldEndpoint && oldEndpoint !== subscription.endpoint && mine.some((m) => m.endpoint === oldEndpoint)) repos.deletePushSubscription(oldEndpoint);
+    repos.upsertPushSubscription({ userId, endpoint: subscription.endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, createdAt: t });
+    return reply.code(201).send({ ok: true, count: repos.listPushSubscriptions(userId).length });
   });
 
   app.delete<{ Params: { userId: string }; Body: { endpoint?: string } }>('/api/users/:userId/push', {
@@ -194,23 +257,27 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   app.post<{ Params: { userId: string } }>('/api/users/:userId/test-notification', { schema: { params: userParams } }, async (req, reply) => {
     if (deps.notifiers.length === 0) return reply.code(503).send({ error: '알림 채널이 설정되지 않았습니다 (VAPID 키 또는 텔레그램 토큰 필요).' });
-    const results: Record<string, unknown> = {};
+    if (!throttleUser('test', req.params.userId, reply)) return reply;
+    const results: Record<string, { sent: number; failed: number }> = {};
     for (const n of deps.notifiers) {
-      results[n.channel] = await n.send(req.params.userId, {
+      const r = await n.send(req.params.userId, {
         title: '테스트 알림',
         body: '알림이 정상적으로 설정되었습니다. 선택한 세부 카테고리에서 평시보다 큰 할인이 감지되면 알려드립니다.',
         url: `${deps.baseUrl}/`,
         tag: 'test',
       });
+      results[n.channel] = { sent: r.filter((x) => x.ok).length, failed: r.filter((x) => !x.ok).length };
     }
-    return { ok: true, results };
+    const any = Object.values(results).some((r) => r.sent + r.failed > 0);
+    return { ok: any, results, ...(any ? {} : { error: '등록된 알림 채널이 없습니다. 먼저 알림을 켜 주세요.' }) };
   });
 
   // ------------------------------------------------------------------ telegram
   app.post<{ Params: { userId: string } }>('/api/users/:userId/telegram/link-code', { schema: { params: userParams } }, async (req, reply) => {
     if (!deps.telegram) return reply.code(503).send({ error: '텔레그램 채널이 설정되지 않았습니다.' });
+    if (!throttleUser('link', req.params.userId, reply)) return reply;
     const t = now();
-    repos.ensureUser(req.params.userId, t);
+    ensureUserWithDefaults(req.params.userId, t);
     const code = randomBytes(4).toString('hex').toUpperCase();
     repos.createTelegramLinkCode(code, req.params.userId, t);
     const bot = await deps.telegram.getBotUsername();
@@ -222,21 +289,31 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   }));
 
   // ------------------------------------------------------------------ deals
-  app.get<{ Querystring: { subcategoryIds?: string; since?: string; limit?: string; minSeverity?: string } }>('/api/deals', async (req) => {
+  const dealsQuery = {
+    type: 'object',
+    properties: {
+      subcategoryIds: { type: 'string', maxLength: 8000 },
+      since: { type: 'number', minimum: 0 },
+      limit: { type: 'integer', minimum: 1, maximum: 200 },
+      minSeverity: { type: 'number', minimum: 0, maximum: 1 },
+    },
+  } as const;
+  app.get<{ Querystring: { subcategoryIds?: string; since?: number; limit?: number; minSeverity?: number } }>('/api/deals', { schema: { querystring: dealsQuery } }, async (req) => {
     const q = req.query;
-    const subcategoryIds = q.subcategoryIds ? q.subcategoryIds.split(',').filter((s) => classifier.hasSubcategory(s)) : undefined;
-    const sinceT = q.since ? Number(q.since) : now() - 7 * 24 * 3600_000;
-    const limit = q.limit ? Math.min(200, Math.max(1, Number(q.limit) || 50)) : 50;
-    const minSeverity = q.minSeverity ? Number(q.minSeverity) : undefined;
+    const subcategoryIds = q.subcategoryIds !== undefined ? q.subcategoryIds.split(',').filter((s) => classifier.hasSubcategory(s)) : undefined;
+    const sinceT = q.since ?? now() - 7 * 24 * 3600_000;
+    const limit = q.limit ?? 50;
     if (subcategoryIds && subcategoryIds.length === 0) return { deals: [] };
-    return { deals: decorate(repos.listDeals({ subcategoryIds, sinceT: Number.isFinite(sinceT) ? sinceT : undefined, limit, minSeverity })) };
+    return { deals: decorate(repos.listDeals({ subcategoryIds, sinceT, limit, minSeverity: q.minSeverity })) };
   });
 
   /** Deals matching the user's subscribed sub-categories AND their sensitivity threshold (what they would be notified about). */
-  app.get<{ Params: { userId: string }; Querystring: { limit?: string } }>('/api/users/:userId/deals', { schema: { params: userParams } }, async (req) => {
+  app.get<{ Params: { userId: string }; Querystring: { limit?: number } }>('/api/users/:userId/deals', {
+    schema: { params: userParams, querystring: { type: 'object', properties: { limit: { type: 'integer', minimum: 1, maximum: 200 } } } },
+  }, async (req) => {
     const prefs = repos.getUserPrefs(req.params.userId);
     if (!prefs || prefs.subcategoryIds.length === 0) return { deals: [], reason: 'no-subcategories' };
-    const limit = req.query.limit ? Math.min(200, Math.max(1, Number(req.query.limit) || 50)) : 50;
+    const limit = req.query.limit ?? 50;
     const minSeverity = DEFAULT_SEVERITY_THRESHOLDS[prefs.sensitivity];
     return { deals: decorate(repos.listDeals({ subcategoryIds: prefs.subcategoryIds, sinceT: now() - 7 * 24 * 3600_000, limit, minSeverity })), minSeverity };
   });
@@ -260,10 +337,19 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   });
 
   // ------------------------------------------------------------------ admin
-  app.post<{ Body: { categoryIds?: number[] } | null }>('/api/admin/sweep', async (req, reply) => {
+  app.post<{ Body: { categoryIds?: number[]; force?: boolean } | undefined }>('/api/admin/sweep', {
+    schema: { body: { anyOf: [{ type: 'null' }, { type: 'object', properties: {
+      categoryIds: { type: 'array', maxItems: 50, items: { type: 'integer', enum: classifier.coupangCategoryIds } },
+      force: { type: 'boolean' } } }] } },
+  }, async (req, reply) => {
     if (!deps.adminToken || req.headers['x-admin-token'] !== deps.adminToken) return reply.code(401).send({ error: 'unauthorized' });
     if (!deps.scheduler) return reply.code(503).send({ error: 'scheduler disabled' });
-    const ids = req.body?.categoryIds?.filter((n) => Number.isInteger(n));
+    const st = deps.scheduler.status;
+    if (st.pausedUntil !== null && !req.body?.force) {
+      return reply.code(409).send({ error: 'polling is paused after an auth/quota error; pass {"force":true} to override', pausedUntil: st.pausedUntil, pauseReason: st.pauseReason });
+    }
+    if (req.body?.force) deps.scheduler.resume();
+    const ids = req.body?.categoryIds;
     const r = await deps.scheduler.sweep(ids && ids.length ? ids : undefined);
     return { ok: true, result: r, note: r === null ? 'sweep already in progress' : undefined };
   });

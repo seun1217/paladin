@@ -53,6 +53,17 @@ export function inQuietHours(t: number, q: { startHour: number; endHour: number 
   return q.startHour < q.endHour ? h >= q.startHour && h < q.endHour : h >= q.startHour || h < q.endHour;
 }
 
+/** Length of the quiet window in ms (0 when none). */
+export function quietWindowMs(q: { startHour: number; endHour: number } | null): number {
+  if (!q || q.startHour === q.endHour) return 0;
+  const hours = q.startHour < q.endHour ? q.endHour - q.startHour : 24 - q.startHour + q.endHour;
+  return hours * 3600_000;
+}
+
+function emptySummary(): DispatchSummary {
+  return { candidates: 0, sent: 0, deferred: 0, skipped: { sensitivity: 0, dailyCap: 0, cooldown: 0, noChannel: 0, duplicate: 0 } };
+}
+
 export function formatWon(n: number): string {
   return `${Math.round(n).toLocaleString('ko-KR')}원`;
 }
@@ -61,7 +72,7 @@ export function buildMessage(deal: DealRecord, product: ProductRecord, subcatego
   const pct = Math.round(deal.discountPct * 100);
   const title = `${subcategoryName ? `[${subcategoryName}] ` : ''}평시 대비 ${pct}% 할인`;
   const body = `${product.name}\n${formatWon(deal.price)} (평시 ${formatWon(deal.baselinePrice)}) · ${deal.reason}`;
-  const url = baseUrl ? `${baseUrl}/open?deal=${deal.id}` : product.url;
+  const url = baseUrl ? `${baseUrl}/go/${deal.id}` : product.url;
   return { title, body, url, imageUrl: product.imageUrl ?? undefined, tag: `deal-${deal.productId}` };
 }
 
@@ -88,37 +99,56 @@ export class Dispatcher {
 
   get channels(): string[] { return this.notifiers.map((n) => n.channel); }
 
+  /** All deliveries are serialised so cap/cooldown/dedup checks never interleave with another send. */
+  private lock: Promise<unknown> = Promise.resolve();
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.lock.then(fn, fn);
+    this.lock = run.catch(() => undefined);
+    return run;
+  }
+
   /** Deliver one deal to every eligible subscriber. */
-  async dispatchDeal(deal: DealRecord, product: ProductRecord): Promise<DispatchSummary> {
-    const summary: DispatchSummary = { candidates: 0, sent: 0, deferred: 0, skipped: { sensitivity: 0, dailyCap: 0, cooldown: 0, noChannel: 0, duplicate: 0 } };
-    const users = this.repos.listUsersForSubcategory(deal.subcategoryId);
-    summary.candidates = users.length;
-    for (const u of users) {
-      const r = await this.deliverToUser(u, deal, product, /*fromDeferred*/ false);
-      this.bump(summary, r);
-    }
-    return summary;
+  dispatchDeal(deal: DealRecord, product: ProductRecord): Promise<DispatchSummary> {
+    return this.serial(async () => {
+      const summary = emptySummary();
+      const users = this.repos.listUsersForSubcategory(deal.subcategoryId);
+      summary.candidates = users.length;
+      for (const u of users) {
+        const r = await this.deliverToUser(u, deal, product, /*fromDeferred*/ false);
+        this.bump(summary, r);
+      }
+      return summary;
+    });
   }
 
   /** Send deals that were held back by quiet hours, now that they may be allowed. */
-  async flushDeferred(): Promise<DispatchSummary> {
-    const summary: DispatchSummary = { candidates: 0, sent: 0, deferred: 0, skipped: { sensitivity: 0, dailyCap: 0, cooldown: 0, noChannel: 0, duplicate: 0 } };
-    const now = this.now();
-    for (const d of this.repos.listDeferred()) {
-      const prefs = this.repos.getUserPrefs(d.userId);
-      const deal = this.repos.getDeal(d.dealId);
-      const product = deal ? this.repos.getProduct(deal.productId) : null;
-      if (!prefs || !deal || !product || now - deal.detectedAt > this.deferredMaxAgeMs || !prefs.subcategoryIds.includes(deal.subcategoryId)) {
-        this.repos.deleteDeferred(d.userId, d.dealId);
-        continue;
+  flushDeferred(): Promise<DispatchSummary> {
+    return this.serial(async () => {
+      const summary = emptySummary();
+      const now = this.now();
+      for (const d of this.repos.listDeferred()) {
+        const prefs = this.repos.getUserPrefs(d.userId);
+        const deal = this.repos.getDeal(d.dealId);
+        const product = deal ? this.repos.getProduct(deal.productId) : null;
+        if (!prefs || !deal || !product || !prefs.subcategoryIds.includes(deal.subcategoryId)) {
+          this.repos.deleteDeferred(d.userId, d.dealId);
+          continue;
+        }
+        // a deal may legitimately wait for the whole quiet window (which can exceed 12h), plus a grace period
+        const maxAge = Math.max(this.deferredMaxAgeMs, quietWindowMs(prefs.quietHours) + 2 * 3600_000);
+        const stillLive = product.lastPrice <= deal.price * 1.05;
+        if (now - deal.detectedAt > maxAge || !stillLive) {
+          this.repos.deleteDeferred(d.userId, d.dealId);
+          continue;
+        }
+        if (inQuietHours(now, prefs.quietHours, this.tz)) continue; // still quiet, keep waiting
+        summary.candidates++;
+        const r = await this.deliverToUser(prefs, deal, product, true);
+        if (r !== 'deferred') this.repos.deleteDeferred(d.userId, d.dealId);
+        this.bump(summary, r);
       }
-      if (inQuietHours(now, prefs.quietHours, this.tz)) continue; // still quiet, keep waiting
-      summary.candidates++;
-      const r = await this.deliverToUser(prefs, deal, product, true);
-      if (r !== 'deferred') this.repos.deleteDeferred(d.userId, d.dealId);
-      this.bump(summary, r);
-    }
-    return summary;
+      return summary;
+    });
   }
 
   private bump(s: DispatchSummary, r: DeliverResult): void {

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../core/db.js';
 import { Repos } from '../core/repos.js';
 import type { DealRecord, NotificationMessage, Notifier, NotifyResult, ProductRecord } from '../core/types.js';
-import { Dispatcher, inQuietHours, localHour, startOfLocalDay } from './dispatcher.js';
+import { Dispatcher, inQuietHours, localHour, quietWindowMs, startOfLocalDay } from './dispatcher.js';
 
 class FakeNotifier implements Notifier {
   sent: { userId: string; message: NotificationMessage }[] = [];
@@ -64,7 +64,7 @@ test('dispatch respects subscription, sensitivity, channels and records notifica
   assert.equal(tg.sent.length, 1);
   assert.equal(push.sent[0]!.message.title, '[노트북] 평시 대비 30% 할인');
   assert.match(push.sent[0]!.message.body, /LG 그램 16\n700,000원 \(평시 1,000,000원\) · 30일 최저가/);
-  assert.equal(push.sent[0]!.message.url, `https://app/open?deal=${deal.id}`);
+  assert.equal(push.sent[0]!.message.url, `https://app/go/${deal.id}`);
   assert.equal(repos.hasNotified('u-sens', deal.id, 'webpush'), true);
   assert.equal(repos.hasNotified('u-sens', deal.id, 'telegram'), true);
   // re-dispatch same deal: duplicate, nothing re-sent
@@ -104,9 +104,11 @@ test('per-product cooldown and daily cap', async () => {
   assert.equal(s.sent, 1);
 });
 
-test('quiet hours defer and flush later, expired deferred are dropped', async () => {
+test('quiet hours defer and flush later, expired or no-longer-live deferred are dropped', async () => {
   let now = LATE_KST;
   const repos = setup(() => now);
+  // the pipeline records the deal price as the product's last price at detection time
+  repos.upsertProduct({ ...product, lastPrice: 700_000 });
   repos.saveUserPrefs({ userId: 'u', subcategoryIds: ['appliances.laptop'], sensitivity: 'sensitive', dailyCap: 0, quietHours: { startHour: 23, endHour: 8 } }, now);
   const push = new FakeNotifier('webpush', new Set(['u']));
   const d = new Dispatcher(repos, [push], { now: () => now, deferredMaxAgeMs: 12 * 3600_000 });
@@ -131,6 +133,53 @@ test('quiet hours defer and flush later, expired deferred are dropped', async ()
   f = await d.flushDeferred();
   assert.equal(f.sent, 0);
   assert.equal(repos.listDeferred().length, 0);
+  // a deal whose price already went back up is not delivered late
+  repos.upsertProduct({ ...product, lastPrice: 1_000_000 });
+  const gone = mkDeal(repos, 0.9, now - 3600_000);
+  repos.deferNotification('u', gone.id, now - 3600_000);
+  f = await d.flushDeferred();
+  assert.equal(f.sent, 0);
+  assert.equal(repos.listDeferred().length, 0);
+});
+
+test('long quiet windows (>12h) keep deferred deals until the window ends', async () => {
+  // quiet 18:00 -> 09:00 (15h). Deal detected 19:30 KST, flushed at 09:10 KST next day (13.7h later)
+  let now = Date.UTC(2026, 0, 15, 10, 30, 0); // 19:30 KST
+  const repos = setup(() => now);
+  repos.upsertProduct({ ...product, lastPrice: 700_000 });
+  repos.saveUserPrefs({ userId: 'u', subcategoryIds: ['appliances.laptop'], sensitivity: 'sensitive', dailyCap: 0, quietHours: { startHour: 18, endHour: 9 } }, now);
+  const push = new FakeNotifier('webpush', new Set(['u']));
+  const d = new Dispatcher(repos, [push], { now: () => now });
+  const deal = mkDeal(repos, 0.9, now);
+  assert.equal((await d.dispatchDeal(deal, product)).deferred, 1);
+  now = Date.UTC(2026, 0, 16, 0, 10, 0); // 09:10 KST next day
+  const f = await d.flushDeferred();
+  assert.equal(f.sent, 1);
+  assert.equal(quietWindowMs({ startHour: 18, endHour: 9 }), 15 * 3600_000);
+  assert.equal(quietWindowMs({ startHour: 9, endHour: 18 }), 9 * 3600_000);
+  assert.equal(quietWindowMs(null), 0);
+});
+
+test('dispatchDeal and flushDeferred are serialised (no interleaved cap checks)', async () => {
+  const now = NOON_KST;
+  const repos = setup(() => now);
+  repos.upsertProduct({ ...product, lastPrice: 700_000 });
+  repos.saveUserPrefs({ userId: 'u', subcategoryIds: ['appliances.laptop'], sensitivity: 'sensitive', dailyCap: 1, quietHours: null }, now);
+  let inFlight = 0, maxInFlight = 0;
+  const slow: Notifier = { channel: 'webpush', async send(userId) {
+    if (!repos.listPushSubscriptions(userId).length && userId !== 'u') return [];
+    inFlight++; maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((r) => setTimeout(r, 20));
+    inFlight--; return [{ ok: true }];
+  } };
+  const d = new Dispatcher(repos, [slow], { now: () => now });
+  const p2 = { ...product, productId: 'p2', lastPrice: 1 }; repos.upsertProduct(p2);
+  const d1 = mkDeal(repos, 0.9, now);
+  const d2 = repos.insertDeal({ productId: 'p2', categoryId: 'appliances', subcategoryId: 'appliances.laptop', detectedAt: now, price: 1, baselinePrice: 2, discountPct: 0.5, severity: 0.9, reason: 'r', rank: 1 });
+  const [a, b] = await Promise.all([d.dispatchDeal(d1, product), d.dispatchDeal(d2, p2)]);
+  assert.equal(maxInFlight, 1, 'sends never overlap');
+  assert.equal(a.sent + b.sent, 1, 'daily cap of 1 honoured even for concurrent dispatches');
+  assert.equal(a.skipped.dailyCap + b.skipped.dailyCap, 1);
 });
 
 test('channel failure is recorded and does not count towards dedup success', async () => {

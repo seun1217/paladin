@@ -13,9 +13,9 @@ function getUserId() {
   return id;
 }
 const userId = getUserId();
-const api = (path, opts = {}) => fetch(path, { headers: { 'content-type': 'application/json' }, ...opts }).then(async (r) => {
+const api = (path, opts = {}) => fetch(path, { ...opts, headers: { ...(opts.body ? { 'content-type': 'application/json' } : {}), ...(opts.headers || {}) } }).then(async (r) => {
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || j.message || `HTTP ${r.status}`);
+  if (!r.ok) { const e = new Error(j.error || j.message || `HTTP ${r.status}`); e.status = r.status; e.code = j.code; throw e; }
   return j;
 });
 const userApi = (suffix, opts) => api(`/api/users/${encodeURIComponent(userId)}${suffix}`, opts);
@@ -102,21 +102,31 @@ function renderTaxonomy() {
   }
 }
 
+let editVersion = 0; // bumps on every local edit so an in-flight save cannot overwrite newer edits
+let saving = false;
 function scheduleSave() {
+  editVersion++;
   $('#save-state').textContent = '저장 중…';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(savePrefs, 500);
 }
 async function savePrefs() {
+  if (saving) { saveTimer = setTimeout(savePrefs, 300); return; }
+  saving = true;
+  const v = editVersion;
   try {
     const r = await userApi('/prefs', { method: 'PUT', body: JSON.stringify({
       subcategoryIds: prefs.subcategoryIds, sensitivity: prefs.sensitivity, dailyCap: prefs.dailyCap, quietHours: prefs.quietHours }) });
-    prefs = r.prefs;
-    $('#save-state').textContent = `저장됨 · ${prefs.subcategoryIds.length}개 세부 카테고리`;
-    if (dealFilter === 'mine') renderDeals();
+    if (v === editVersion) {
+      prefs = r.prefs;
+      $('#save-state').textContent = `저장됨 · ${prefs.subcategoryIds.length}개 세부 카테고리`;
+      if (dealFilter === 'mine') renderDeals();
+    } else {
+      saveTimer = setTimeout(savePrefs, 0); // newer local edits exist: send them too
+    }
   } catch (e) {
     $('#save-state').textContent = `저장 실패: ${e.message}`;
-  }
+  } finally { saving = false; }
 }
 
 // ------------------------------------------------------------------ settings UI
@@ -222,7 +232,16 @@ async function enablePush() {
       if (cur && (cur.length !== key.length || cur.some((b, i) => b !== key[i]))) { await sub.unsubscribe(); sub = null; }
     }
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-    const r = await userApi('/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+    let r;
+    try {
+      r = await userApi('/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+    } catch (e) {
+      if (e.code !== 'endpoint_owned_by_other_user') throw e;
+      // this browser's subscription was registered under a previous anonymous id: get a fresh endpoint
+      await sub.unsubscribe();
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      r = await userApi('/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+    }
     channels.webpush = r.count;
     if (reg.active) reg.active.postMessage({ type: 'set-user-id', userId });
     toast('알림이 켜졌어요 🎉');
@@ -253,8 +272,13 @@ async function resyncSubscription() {
     if (!hasPush || !config.vapidPublicKey) return;
     const sub = await reg.pushManager.getSubscription();
     if (sub && Notification.permission === 'granted') {
-      const r = await userApi('/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
-      channels.webpush = r.count;
+      try {
+        const r = await userApi('/push', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON() }) });
+        channels.webpush = r.count;
+      } catch (e) {
+        if (e.code === 'endpoint_owned_by_other_user') await sub.unsubscribe(); // stale: user will re-enable
+        else throw e;
+      }
     }
   } catch (e) { console.warn('sw/resync failed', e); }
 }
@@ -286,7 +310,7 @@ async function renderStatus() {
     const next = s.scheduler && s.scheduler.nextSweepAt ? new Date(s.scheduler.nextSweepAt).toLocaleTimeString('ko-KR') : '-';
     $('#status-json').textContent = JSON.stringify({
       provider: s.providerMode, nextSweepAt: next, products: s.counts.products, observations: s.counts.observations,
-      dealsLast24h: s.counts.dealsLast24h, users: s.counts.users, pushSubscriptions: s.counts.pushSubscriptions,
+      dealsLast24h: s.counts.dealsLast24h, paused: s.scheduler ? s.scheduler.paused : undefined,
       lastPolls: s.lastPolls.map((p) => ({ cat: p.coupangCategoryId, ok: p.ok, products: p.productCount, deals: p.dealCount, at: new Date(p.startedAt).toLocaleString('ko-KR'), error: p.error || undefined })),
     }, null, 1);
   } catch { /* ignore */ }
@@ -298,7 +322,10 @@ async function boot() {
   $('#btn-push').addEventListener('click', enablePush);
   $('#btn-push-off').addEventListener('click', disablePush);
   $('#btn-test').addEventListener('click', async () => {
-    try { await userApi('/test-notification', { method: 'POST' }); toast('테스트 알림을 보냈어요. 잠시 후 도착합니다.'); } catch (e) { toast(`실패: ${e.message}`, 4000); }
+    try {
+      const r = await userApi('/test-notification', { method: 'POST' });
+      toast(r.ok ? '테스트 알림을 보냈어요. 잠시 후 도착합니다.' : (r.error || '전송할 채널이 없습니다.'), 4000);
+    } catch (e) { toast(`실패: ${e.message}`, 4000); }
   });
   $('#btn-telegram').addEventListener('click', linkTelegram);
   $('#btn-telegram-off').addEventListener('click', unlinkTelegram);

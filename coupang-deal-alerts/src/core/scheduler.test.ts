@@ -75,3 +75,42 @@ test('generic errors do not pause; other categories still polled', async () => {
   assert.equal(r!.categories[0]!.ok, false);
   assert.equal(s.status.pausedUntil, null);
 });
+
+test('partial (admin) sweep does not postpone the next full sweep; tick survives DB errors', async () => {
+  let now = Date.UTC(2026, 0, 1);
+  const repos = new Repos(openDb(':memory:'));
+  const classifier = new Classifier(loadTaxonomy());
+  const ids = classifier.coupangCategoryIds;
+  const provider = new FixtureProvider({ now: () => now, categoryIds: ids, productsPerCategory: 5 });
+  const pipeline = new Pipeline(repos, classifier, createDetector(), null, { now: () => now, logger: quiet });
+  const s = new Scheduler(provider, pipeline, repos, { categoryIds: ids, intervalMs: 3600_000, limit: 5, now: () => now, sleep: async () => {}, logger: quiet });
+  await s.tick();
+  const full = s.status.lastSweepAt;
+  now += 50 * 60_000;
+  if (ids.length >= 2) {
+    await s.sweep([ids[0]!]);
+    assert.equal(s.status.lastSweepAt, full, 'subset sweep leaves last_sweep_at alone');
+  }
+  now += 11 * 60_000;
+  await s.tick();
+  assert.notEqual(s.status.lastSweepAt, full, 'full sweep still due at the original time');
+  // bookkeeping failure must not crash the tick
+  repos.db.exec('DROP TABLE poll_runs');
+  now += 3600_000;
+  await s.tick();
+  assert.equal(s.status.sweeping, false);
+  assert.ok(s.status.lastResult!.categories.length > 0, 'sweep completed despite poll_runs bookkeeping failure');
+});
+
+test('a slow tick hook cannot block the sweep', async () => {
+  let now = Date.UTC(2026, 0, 1);
+  const repos = new Repos(openDb(':memory:'));
+  const classifier = new Classifier(loadTaxonomy());
+  const ids = classifier.coupangCategoryIds;
+  const provider = new FixtureProvider({ now: () => now, categoryIds: ids, productsPerCategory: 5 });
+  const pipeline = new Pipeline(repos, classifier, createDetector(), null, { now: () => now, logger: quiet });
+  const s = new Scheduler(provider, pipeline, repos, { categoryIds: ids, intervalMs: 3600_000, limit: 5, now: () => now, sleep: async () => {}, logger: quiet,
+    hookTimeoutMs: 20, onTick: () => new Promise(() => { /* never resolves */ }) });
+  await s.tick();
+  assert.ok(s.status.lastSweepAt !== null, 'sweep ran even though the hook hung');
+});

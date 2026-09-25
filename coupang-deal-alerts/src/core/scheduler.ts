@@ -24,6 +24,15 @@ export interface SchedulerOptions {
   tickMs?: number;
   /** after an auth/quota error (401/403) pause polling for this long. Default 24h */
   authBackoffMs?: number;
+  /** max time the onTick hook may take before the tick moves on. Default 15s */
+  hookTimeoutMs?: number;
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
 }
 
 export interface SweepResult {
@@ -91,12 +100,31 @@ export class Scheduler {
     this.timer = null;
   }
 
+  private ticking = false;
+
+  /**
+   * One timer tick. Never throws (it is fired with `void`), never overlaps itself, and a slow hook
+   * (e.g. Telegram polling) cannot delay the sweep-due decision by more than `hookTimeoutMs`.
+   */
   async tick(): Promise<void> {
-    try { await this.opts.onTick?.(); } catch (e) { this.log.warn(`[scheduler] tick hook failed: ${(e as Error).message}`); }
-    try { await this.opts.dispatcher?.flushDeferred(); } catch (e) { this.log.warn(`[scheduler] flushDeferred failed: ${(e as Error).message}`); }
-    if (this.pausedUntil !== null && this.now() < this.pausedUntil) return;
-    const due = this.lastSweepAt === null || this.now() - this.lastSweepAt >= this.opts.intervalMs;
-    if (due && !this.sweeping) await this.sweep();
+    if (this.ticking) return;
+    this.ticking = true;
+    try {
+      if (this.opts.onTick) {
+        try { await withTimeout(this.opts.onTick(), this.opts.hookTimeoutMs ?? 15_000, 'tick hook'); }
+        catch (e) { this.log.warn(`[scheduler] tick hook failed: ${(e as Error).message}`); }
+      }
+      if (this.opts.dispatcher && !this.sweeping) {
+        try { await this.opts.dispatcher.flushDeferred(); } catch (e) { this.log.warn(`[scheduler] flushDeferred failed: ${(e as Error).message}`); }
+      }
+      if (this.pausedUntil !== null && this.now() < this.pausedUntil) return;
+      const due = this.lastSweepAt === null || this.now() - this.lastSweepAt >= this.opts.intervalMs;
+      if (due && !this.sweeping) {
+        try { await this.sweep(); } catch (e) { this.log.warn(`[scheduler] sweep failed: ${(e as Error).message}`); }
+      }
+    } finally {
+      this.ticking = false;
+    }
   }
 
   /** Pause polling (circuit breaker). Persisted so restarts do not hammer a blocked key. */
@@ -118,39 +146,48 @@ export class Scheduler {
     if (this.sweeping) return null;
     this.sweeping = true;
     const startedAt = this.now();
-    this.lastSweepAt = startedAt;
-    this.repos.setMeta('last_sweep_at', String(startedAt));
     const result: SweepResult = { startedAt, finishedAt: startedAt, categories: [] };
+    // a partial (admin) sweep must not postpone the next full sweep
+    const isFull = categoryIds === this.opts.categoryIds || (categoryIds.length === this.opts.categoryIds.length && categoryIds.every((c) => this.opts.categoryIds.includes(c)));
     try {
+      if (isFull) {
+        this.lastSweepAt = startedAt;
+        this.safe(() => this.repos.setMeta('last_sweep_at', String(startedAt)), 'setMeta');
+      }
       let first = true;
       for (const cid of categoryIds) {
         if (!first && this.opts.spacingMs) await this.sleep(this.opts.spacingMs);
         first = false;
-        const runId = this.repos.startPollRun(cid, this.now());
+        const runId = this.safe(() => this.repos.startPollRun(cid, this.now()), 'startPollRun') ?? null;
         try {
           const snap = await this.provider.fetchBestProducts(cid, this.opts.limit);
           const r = await this.pipeline.processSnapshot(snap);
-          this.repos.finishPollRun(runId, { ok: true, productCount: r.products, dealCount: r.deals.length }, this.now());
+          if (runId !== null) this.safe(() => this.repos.finishPollRun(runId, { ok: true, productCount: r.products, dealCount: r.deals.length }, this.now()), 'finishPollRun');
           result.categories.push({ coupangCategoryId: cid, ok: true, products: r.products, deals: r.deals.length });
           if (r.deals.length) this.log.info(`[scheduler] category ${cid}: ${r.products} products, ${r.deals.length} deals, ${r.notified} notifications`);
         } catch (e) {
           const msg = (e as Error).message ?? String(e);
-          this.repos.finishPollRun(runId, { ok: false, productCount: 0, dealCount: 0, error: msg }, this.now());
+          if (runId !== null) this.safe(() => this.repos.finishPollRun(runId, { ok: false, productCount: 0, dealCount: 0, error: msg }, this.now()), 'finishPollRun');
           result.categories.push({ coupangCategoryId: cid, ok: false, products: 0, deals: 0, error: msg });
           this.log.warn(`[scheduler] category ${cid} failed: ${msg}`);
           if (isAuthOrQuotaError(e)) {
             // A rejected key or quota block must not be retried blindly: repeated 403s can escalate to a ban.
-            this.pause(this.opts.authBackoffMs ?? 24 * 3600_000, msg);
+            this.safe(() => this.pause(this.opts.authBackoffMs ?? 24 * 3600_000, msg), 'pause');
             break;
           }
         }
       }
-      try { this.pipeline.prune(); } catch (e) { this.log.warn(`[scheduler] prune failed: ${(e as Error).message}`); }
+      this.safe(() => this.pipeline.prune(), 'prune');
     } finally {
       result.finishedAt = this.now();
       this.lastResult = result;
       this.sweeping = false;
     }
     return result;
+  }
+
+  /** Run DB bookkeeping that must never abort a sweep (SQLITE_BUSY, disk full, ...). */
+  private safe<T>(fn: () => T, what: string): T | undefined {
+    try { return fn(); } catch (e) { this.log.warn(`[scheduler] ${what} failed: ${(e as Error).message}`); return undefined; }
   }
 }

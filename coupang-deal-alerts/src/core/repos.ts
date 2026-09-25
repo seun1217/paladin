@@ -162,13 +162,13 @@ export class Repos {
       .run(productId, obs.t, obs.price, obs.rank);
   }
 
-  /** Ascending by time. `sinceT` inclusive lower bound (epoch ms). */
+  /** Ascending by time. `sinceT` inclusive lower bound (epoch ms). When more than `limit` rows exist, the NEWEST are kept. */
   getObservations(productId: string, sinceT = 0, limit = 5000): PriceObservation[] {
     const rows = this.db.prepare(
-      `SELECT t, price, rank FROM observations WHERE product_id = ? AND t >= ? ORDER BY t ASC LIMIT ?`,
+      `SELECT t, price, rank FROM observations WHERE product_id = ? AND t >= ? ORDER BY t DESC LIMIT ?`,
     ).all(productId, sinceT, limit) as unknown as PriceObservation[];
     // node:sqlite returns null-prototype objects; normalise to plain objects
-    return rows.map((r) => ({ t: Number(r.t), price: Number(r.price), rank: Number(r.rank) }));
+    return rows.map((r) => ({ t: Number(r.t), price: Number(r.price), rank: Number(r.rank) })).reverse();
   }
 
   /** Delete observations older than `beforeT` (retention). Returns rows removed. */
@@ -308,6 +308,10 @@ export class Repos {
       ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh,
         auth = excluded.auth, fail_count = 0`).run(s.endpoint, s.userId, s.p256dh, s.auth, s.createdAt);
   }
+  getPushSubscription(endpoint: string): PushSubscriptionRecord | null {
+    const r = this.db.prepare('SELECT * FROM push_subscriptions WHERE endpoint = ?').get(endpoint) as unknown as PushRow | undefined;
+    return r ? mapPush(r) : null;
+  }
   deletePushSubscription(endpoint: string): boolean {
     return Number(this.db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint).changes) > 0;
   }
@@ -338,6 +342,14 @@ export class Repos {
   }
   deleteTelegramLink(userId: string): boolean {
     return Number(this.db.prepare('DELETE FROM telegram_links WHERE user_id = ?').run(userId).changes) > 0;
+  }
+  getTelegramLinkByChatId(chatId: string): TelegramLinkRecord | null {
+    const r = this.db.prepare('SELECT * FROM telegram_links WHERE chat_id = ? LIMIT 1').get(chatId) as
+      | { user_id: string; chat_id: string; created_at: number } | undefined;
+    return r ? { userId: r.user_id, chatId: r.chat_id, createdAt: r.created_at } : null;
+  }
+  deleteTelegramLinksByChatId(chatId: string): number {
+    return Number(this.db.prepare('DELETE FROM telegram_links WHERE chat_id = ?').run(chatId).changes);
   }
   createTelegramLinkCode(code: string, userId: string, now: number): void {
     this.db.prepare('DELETE FROM telegram_link_codes WHERE user_id = ?').run(userId);

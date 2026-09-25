@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import webpush from 'web-push';
 import { openDb } from '../core/db.js';
 import { Repos } from '../core/repos.js';
-import { WebPushNotifier } from './webpush.js';
+import { WebPushNotifier, isAllowedPushEndpoint } from './webpush.js';
 
 const keys = webpush.generateVAPIDKeys();
 const quiet = { info() {}, warn() {} };
@@ -50,4 +50,24 @@ test('410/404 removes the subscription; repeated other failures drop it after ma
 test('requires VAPID keys', () => {
   const repos = setup();
   assert.throws(() => new WebPushNotifier(repos, { vapidPublicKey: '', vapidPrivateKey: '', subject: 'mailto:x' }));
+});
+
+test('isAllowedPushEndpoint accepts real push services and rejects everything else', () => {
+  for (const ok of ['https://fcm.googleapis.com/fcm/send/abc', 'https://updates.push.services.mozilla.com/wpush/v2/x', 'https://web.push.apple.com/QBx', 'https://wns2-par02p.notify.windows.com/w/?token=x', 'https://push-api.cloud.huawei.com/v1/x']) {
+    assert.equal(isAllowedPushEndpoint(ok), true, ok);
+  }
+  for (const bad of ['http://fcm.googleapis.com/x', 'https://fcm.googleapis.com.evil.io/x', 'https://10.0.0.5:9200/', 'https://[::1]/', 'https://localhost/', 'https://user:pw@fcm.googleapis.com/x', 'not a url', 'https://example.internal/']) {
+    assert.equal(isAllowedPushEndpoint(bad), false, bad);
+  }
+  assert.equal(isAllowedPushEndpoint('https://push.example.org/x', ['push.example.org']), true);
+});
+
+test('oversized payload drops the image and trims the body', async () => {
+  const repos = setup();
+  const payloads: string[] = [];
+  const n = new WebPushNotifier(repos, { vapidPublicKey: keys.publicKey, vapidPrivateKey: keys.privateKey, subject: 'mailto:t@example.com', logger: quiet,
+    sendImpl: async (_s, payload) => { payloads.push(payload); return {}; } });
+  await n.send('u1', { title: 'T', body: 'x'.repeat(5000), url: 'u', tag: 't', imageUrl: 'https://img' });
+  assert.ok(Buffer.byteLength(payloads[0]!, 'utf8') <= 3900);
+  assert.equal(JSON.parse(payloads[0]!).image, undefined);
 });

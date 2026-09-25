@@ -15,6 +15,7 @@ import type { Notifier, ProductProvider } from '../core/types.js';
 import { buildApp } from './app.js';
 
 loadDotEnv();
+process.on('unhandledRejection', (e) => console.error('[main] unhandled rejection:', e));
 const root = path.resolve(process.cwd());
 const cfg = loadConfig(root);
 
@@ -59,6 +60,7 @@ const app = await buildApp({
   repos, classifier, scheduler, dispatcher, notifiers, telegram,
   publicDir: cfg.publicDir, vapidPublicKey: cfg.vapid.publicKey, adminToken: cfg.adminToken,
   providerMode: cfg.providerMode, baseUrl: cfg.baseUrl, logger: true,
+  trustProxy: cfg.trustProxy, pushEndpointHosts: cfg.pushEndpointHosts,
 });
 
 await app.listen({ port: cfg.port, host: cfg.host });

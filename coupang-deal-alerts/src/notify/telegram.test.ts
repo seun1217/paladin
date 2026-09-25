@@ -64,3 +64,18 @@ test('pollUpdates links chats via /start CODE, rejects bad codes, advances offse
   const last = calls.filter((c) => c.url.includes('/getUpdates')).pop()!;
   assert.match(last.url, /offset=13/);
 });
+
+test('offset persists across restarts and /stop unlinks by chat id', async () => {
+  const repos = new Repos(openDb(':memory:'));
+  repos.setTelegramLink('u9', '900', 1);
+  let updates: unknown[] = [{ update_id: 41, message: { chat: { id: 900 }, text: '/stop' } }];
+  const { f, calls } = fakeFetch((url) => url.includes('/getUpdates') ? { json: { ok: true, result: updates } } : { json: { ok: true, result: {} } });
+  const n = new TelegramNotifier(repos, { botToken: 'T', fetchImpl: f, now: () => 5000, logger: quiet });
+  await n.pollUpdates();
+  assert.equal(repos.getTelegramLink('u9'), null, '/stop removed the link');
+  assert.equal(repos.getMeta('telegram_offset'), '42');
+  const n2 = new TelegramNotifier(repos, { botToken: 'T', fetchImpl: f, now: () => 6000, logger: quiet });
+  updates = [];
+  await n2.pollUpdates();
+  assert.match(calls.filter((c) => c.url.includes('/getUpdates')).pop()!.url, /offset=42/, 'new instance resumes from the saved offset');
+});
