@@ -35,6 +35,16 @@ for (const id of order) {
       seen.add(it.id); it.regionId = id;
       for (const k in it) it[k] = clean(it[k]);
       if (kind === 'places') { it.tags = it.tags || []; it.babymoon = it.babymoon || []; }
+      if (kind === 'promotions') { // 에이전트 출력 필드명 별칭 정규화
+        const alias = { name: 'title', description: 'summary', stayStart: 'travelStart', stayEnd: 'travelEnd', priceFromKRW: 'priceKRW', cancellation: 'conditions' };
+        for (const k in alias) if (it[k] != null && it[alias[k]] == null) it[alias[k]] = it[k];
+        for (const k of ['name', 'nameEn', 'description', 'stayStart', 'stayEnd', 'priceFromKRW', 'cancellation', 'currency', 'checkedOn', 'breakfastIncluded', 'type']) delete it[k];
+        for (const k of ['bookStart', 'bookEnd', 'travelStart', 'travelEnd']) if (it[k] == null) delete it[k];
+        if (!it.providerName) { const pl = (d.places || []).find(p => p.id === it.placeId); it.providerName = pl ? pl.name : (it.provider === 'hotel' ? '호텔' : '기타'); }
+        if (!['hotel', 'airline', 'agency', 'attraction', 'other'].includes(it.provider)) it.provider = 'other';
+        if (typeof it.priceKRW === 'number') it.priceKRW = Math.round(it.priceKRW);
+      }
+      if (kind === 'events') for (const k of ['start', 'end']) if (typeof it[k] === 'string') it[k] = it[k].slice(0, 10);
       const old = prevById[it.id];
       if (initial) delete it.addedAt; else it.addedAt = old && old.addedAt ? old.addedAt : today;
       it.updatedAt = today;
