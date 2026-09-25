@@ -9,7 +9,7 @@
 - `data/regions.config.json` : 지역 ID와 bbox(좌표 검증·해안선 추출에 사용).
 - `build.js` : `src/index.html` + 데이터 + `vendor/leaflet.css` → `index.html`
 - `validate.js` : 데이터 검증(필수값, ID 중복, bbox 밖 좌표, 날짜 형식, 만료 프로모션 경고)
-- `scripts/assemble.js` : 지역별 검증 JSON을 `data/babymoon.json`으로 병합(신규 항목 `addedAt` 표시)
+- `scripts/assemble.js` : 지역별 검증 JSON을 `data/babymoon.json`으로 병합(신규 항목 `addedAt` 표시, 최초 구축 시 `--initial`)
 - `scripts/make-geo.js` : `geo.json` 재생성(패키지: world-atlas, topojson-client, @geo-maps/earth-coastlines-10m, @turf/bbox-clip)
 - `UPDATE.md` : 정기 업데이트 절차
 

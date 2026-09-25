@@ -104,6 +104,9 @@ a{color:var(--accent)}
 .pin.fit-mid .fit{background:var(--warn)}
 .pin.fit-low .fit{background:var(--bad)}
 .pin .cnt{color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.pin.compact{padding:0;width:16px;height:16px;justify-content:center;gap:0;border-radius:50%;transform:translate(-50%,-50%)}
+.pin.compact:after{display:none}
+.pin.compact .cnt,.pin.compact .nm{display:none}
 .pin.dim{opacity:.55;border-color:var(--line-strong)}
 .pin.dim:after{border-color:var(--line-strong)}
 .pin:hover,.pin.active{background:var(--accent);color:var(--accent-ink)}
@@ -153,7 +156,7 @@ a{color:var(--accent)}
 .rhead .title .en{color:var(--muted);font-size:13px}
 .facts2{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12.5px}
 .facts2 div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:3px 0}
-.facts2 span:first-child{color:var(--muted)}
+.facts2 span:first-child{color:var(--muted);white-space:nowrap}
 .facts2 span:last-child{font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
 .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin:4px 0 0;overflow-x:auto}
 .tab{border:0;background:none;padding:8px 10px;font-size:13px;color:var(--muted);border-bottom:2px solid transparent;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -358,7 +361,7 @@ function visible(id) {
 function allVisible() { return regions.map(r => visible(r.id)); }
 
 /* ---------- 지도 ---------- */
-let map, worldLayer, regionLayer, pinLayer, itemLayer, markers = {};
+let map, worldLayer, regionLayer, pinLayer, itemLayer, markers = {}, pins = [];
 const hasLeaflet = typeof L !== 'undefined';
 if (!hasLeaflet) { $('#map').innerHTML = '<div class="mapmsg">지도 라이브러리를 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 새로고침하세요. 오른쪽 목록은 계속 사용할 수 있습니다.</div>'; }
 function shiftGeom(mp) { return { type: 'MultiPolygon', coordinates: mp.coordinates.map(poly => poly.map(ring => ring.map(([x, y]) => [normLng(x), y]))) }; }
@@ -371,17 +374,33 @@ if (hasLeaflet) {
   worldLayer = L.geoJSON({ type: 'Feature', geometry: worldGeom() }, { style: landStyle(false) }).addTo(map);
   pinLayer = L.layerGroup().addTo(map); itemLayer = L.layerGroup().addTo(map);
   map.on('zoomend', () => { if (S.region && map.getZoom() <= 5.5) closeRegion(false); });
+  map.on('zoomend moveend', () => requestAnimationFrame(layoutPins));
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', restyle);
   new MutationObserver(restyle).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 }
 function restyle() { if (!hasLeaflet) return; worldLayer.setStyle(landStyle(false)); if (regionLayer) regionLayer.setStyle(landStyle(true)); renderMap(); }
-function pinHtml(v) { return `<span class="pin fit-${v.fit.cls}${v.any ? '' : ' dim'}${S.region === v.region.id ? ' active' : ''}" title="${esc(v.fit.label)}"><i class="fit"></i>${esc(v.region.name)}<span class="cnt">${v.any}</span></span>`; }
+function pinHtml(v) { return `<span class="pin fit-${v.fit.cls}${v.any ? '' : ' dim'}${S.region === v.region.id ? ' active' : ''}" title="${esc(v.fit.label)}"><i class="fit"></i><span class="nm">${esc(v.region.name)}</span><span class="cnt">${v.any}</span></span>`; }
 function renderPins(vis) {
-  if (!hasLeaflet) return; pinLayer.clearLayers();
+  if (!hasLeaflet) return; pinLayer.clearLayers(); pins = [];
   vis.filter(v => v.show).forEach(v => {
     const m = L.marker([v.region.lat, normLng(v.region.lng)], { icon: L.divIcon({ className: '', html: pinHtml(v), iconSize: [0, 0], iconAnchor: [0, 0] }), keyboard: true, zIndexOffset: S.region === v.region.id ? 1000 : 0 });
-    m.on('click', () => openRegion(v.region.id)); m.addTo(pinLayer);
+    m.bindTooltip(`${v.region.name} · ${v.any}`, { direction: 'top', offset: [0, -10], opacity: 0.95 });
+    m.on('click', () => openRegion(v.region.id)); m.addTo(pinLayer); pins.push({ m, v });
   });
+  requestAnimationFrame(layoutPins);
+}
+function layoutPins() {
+  if (!hasLeaflet || !map._loaded) return;
+  const placed = []; const hit = (a, b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+  const order = [...pins].sort((a, b) => (S.region === a.v.region.id ? -1 : S.region === b.v.region.id ? 1 : 0) || (b.v.any - a.v.any));
+  for (const { m, v } of order) {
+    const el = m.getElement() && m.getElement().querySelector('.pin'); if (!el) continue;
+    el.classList.remove('compact'); el.closest('.leaflet-marker-icon').style.zIndex = '';
+    const pt = map.latLngToContainerPoint(m.getLatLng()); const w = el.offsetWidth, h = el.offsetHeight;
+    const full = [pt.x - w / 2, pt.y - h - 6, pt.x + w / 2, pt.y];
+    if (placed.some(b => hit(b, full))) { el.classList.add('compact'); el.closest('.leaflet-marker-icon').style.zIndex = '1'; el.title = `${v.region.name} · ${v.any}`; placed.push([pt.x - 9, pt.y - 9, pt.x + 9, pt.y + 9]); m.unbindTooltip().bindTooltip(`${v.region.name} · ${v.any}`, { direction: 'top', offset: [0, -8], opacity: 0.95 }); }
+    else { placed.push(full); m.unbindTooltip(); }
+  }
 }
 function renderItems(v) {
   if (!hasLeaflet) return; itemLayer.clearLayers(); markers = {}; if (!v) return;
@@ -396,7 +415,7 @@ function renderItems(v) {
   v.events.forEach(e => add(e, 'event', [e.lat, normLng(e.lng)], `<b>${esc(e.name)}</b><br><span style="color:var(--muted)">${esc(fmtRangeY(e.start, e.end))}</span>`));
 }
 function renderMap() { const vis = allVisible(); renderPins(vis); renderItems(S.region ? vis.find(v => v.region.id === S.region) : null); if (hasLeaflet) worldLayer.setStyle(landStyle(false)); }
-function fitWorld() { if (!hasLeaflet) return; const pts = regions.map(r => [r.lat, normLng(r.lng)]); map.fitBounds(L.latLngBounds(pts), { padding: [30, 30], animate: !reduced }); }
+function fitWorld() { if (!hasLeaflet) return; const core = regions.filter(r => normLng(r.lng) < 180); const pts = (core.length ? core : regions).map(r => [r.lat, normLng(r.lng)]); map.fitBounds(L.latLngBounds(pts), { padding: [40, 40], animate: !reduced }); } // 하와이(경도 180 초과)는 초기 범위에서 제외해 아시아권을 크게 보여줌
 function openRegion(id, keepItem) {
   S.region = id; if (!keepItem) { S.item = null; S.tab = S.tab === 'info' ? 'resort' : S.tab; }
   if (matchMedia('(max-width: 760px)').matches) { $('#panel').classList.add('tall'); if (hasLeaflet) setTimeout(() => map.invalidateSize(), 300); }

@@ -1,12 +1,13 @@
 // 지역별 검증 JSON(verified/*.json) → data/babymoon.json 병합
-// 사용: node scripts/assemble.js <verifiedDir> [updatedAt=YYYY-MM-DD]
+// 사용: node scripts/assemble.js <verifiedDir> [updatedAt=YYYY-MM-DD] [--initial]
 // - 각 파일: { region, places, events, promotions } (workflow 검증 단계 출력)
 // - 기존 data/babymoon.json 과 비교해 새 항목에 addedAt 을 찍고, 기존 항목의 addedAt 은 유지
 // - 파일이 없는 지역은 기존 데이터를 그대로 유지(부분 업데이트 가능)
 const fs = require('fs'); const path = require('path');
 const root = path.join(__dirname, '..');
 const dir = process.argv[2]; if (!dir) { console.error('usage: node scripts/assemble.js <verifiedDir> [updatedAt]'); process.exit(2); }
-const today = process.argv[3] || new Date().toISOString().slice(0, 10);
+const initial = process.argv.includes('--initial'); // 최초 구축: addedAt 을 찍지 않음(모든 항목이 NEW 로 표시되는 것 방지)
+const today = process.argv.filter(a => !a.startsWith('--'))[3] || new Date().toISOString().slice(0, 10);
 const cfg = JSON.parse(fs.readFileSync(path.join(root, 'data', 'regions.config.json'), 'utf8'));
 const order = cfg.regions.map(r => r.id);
 const prevPath = path.join(root, 'data', 'babymoon.json');
@@ -35,7 +36,7 @@ for (const id of order) {
       for (const k in it) it[k] = clean(it[k]);
       if (kind === 'places') { it.tags = it.tags || []; it.babymoon = it.babymoon || []; }
       const old = prevById[it.id];
-      it.addedAt = old && old.addedAt ? old.addedAt : today;
+      if (initial) delete it.addedAt; else it.addedAt = old && old.addedAt ? old.addedAt : today;
       it.updatedAt = today;
       out[kind].push(it);
     }
